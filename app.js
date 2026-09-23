@@ -656,33 +656,38 @@ function renderMinutenAlle() {
   el.innerHTML = '';
   if (!state.wedstrijden.length) return;
   const maxPerWedstrijd = AANTAL_KWARTEN * KWART_DUUR;
+  const meerdereWedstrijden = state.wedstrijden.length > 1;
 
-  state.wedstrijden.forEach(w => {
-    const blok = document.createElement('div');
-    blok.className = 'wedstrijd-blok';
-    const kop = document.createElement('h4');
-    kop.textContent = `${w.naam} — ${formatDatumNL(w.datum)}`;
-    blok.appendChild(kop);
+  if (meerdereWedstrijden) {
+    state.wedstrijden.forEach(w => {
+      const blok = document.createElement('div');
+      blok.className = 'wedstrijd-blok';
+      const kop = document.createElement('h4');
+      kop.textContent = `${w.naam} — ${formatDatumNL(w.datum)}`;
+      blok.appendChild(kop);
 
-    const aanwezig = state.players.filter(p => w.aanwezig[p.id]);
-    if (!aanwezig.length) {
-      const leeg = document.createElement('p');
-      leeg.className = 'hint';
-      leeg.textContent = 'Geen aanwezige spelers.';
-      blok.appendChild(leeg);
-    } else {
-      const lijst = document.createElement('div');
-      lijst.className = 'minuten-overzicht';
-      aanwezig.forEach(p => lijst.appendChild(bouwMinutenRij(p.naam, minutenSpelerInWedstrijd(w, p.id), maxPerWedstrijd)));
-      blok.appendChild(lijst);
-    }
-    el.appendChild(blok);
-  });
+      const aanwezig = state.players.filter(p => w.aanwezig[p.id]);
+      if (!aanwezig.length) {
+        const leeg = document.createElement('p');
+        leeg.className = 'hint';
+        leeg.textContent = 'Geen aanwezige spelers.';
+        blok.appendChild(leeg);
+      } else {
+        const lijst = document.createElement('div');
+        lijst.className = 'minuten-overzicht';
+        aanwezig.forEach(p => lijst.appendChild(bouwMinutenRij(p.naam, minutenSpelerInWedstrijd(w, p.id), maxPerWedstrijd)));
+        blok.appendChild(lijst);
+      }
+      el.appendChild(blok);
+    });
+  }
 
   const totaalBlok = document.createElement('div');
   totaalBlok.className = 'wedstrijd-blok totaal-blok';
   const totaalKop = document.createElement('h4');
-  totaalKop.textContent = `Totaal — alle wedstrijden (${state.wedstrijden.length})`;
+  totaalKop.textContent = meerdereWedstrijden
+    ? `Totaal — alle wedstrijden (${state.wedstrijden.length})`
+    : `${state.wedstrijden[0].naam} — ${formatDatumNL(state.wedstrijden[0].datum)}`;
   totaalBlok.appendChild(totaalKop);
 
   const totaalLijst = document.createElement('div');
@@ -700,31 +705,36 @@ function renderPositiesAlle() {
   const el = document.getElementById('positiesAlle');
   el.innerHTML = '';
   if (!state.wedstrijden.length) return;
+  const meerdereWedstrijden = state.wedstrijden.length > 1;
 
-  state.wedstrijden.forEach(w => {
-    const blok = document.createElement('div');
-    blok.className = 'wedstrijd-blok';
-    const kop = document.createElement('h4');
-    kop.textContent = `${w.naam} — ${formatDatumNL(w.datum)}`;
-    blok.appendChild(kop);
+  if (meerdereWedstrijden) {
+    state.wedstrijden.forEach(w => {
+      const blok = document.createElement('div');
+      blok.className = 'wedstrijd-blok';
+      const kop = document.createElement('h4');
+      kop.textContent = `${w.naam} — ${formatDatumNL(w.datum)}`;
+      blok.appendChild(kop);
 
-    const aanwezig = state.players.filter(p => w.aanwezig[p.id]);
-    if (!aanwezig.length) {
-      const leeg = document.createElement('p');
-      leeg.className = 'hint';
-      leeg.textContent = 'Geen aanwezige spelers.';
-      blok.appendChild(leeg);
-    } else {
-      const rijen = aanwezig.map(p => ({ naam: p.naam, tellingen: positieTellingSpelerInWedstrijd(w, p.id) }));
-      blok.appendChild(bouwPositiesTabel(rijen));
-    }
-    el.appendChild(blok);
-  });
+      const aanwezig = state.players.filter(p => w.aanwezig[p.id]);
+      if (!aanwezig.length) {
+        const leeg = document.createElement('p');
+        leeg.className = 'hint';
+        leeg.textContent = 'Geen aanwezige spelers.';
+        blok.appendChild(leeg);
+      } else {
+        const rijen = aanwezig.map(p => ({ naam: p.naam, tellingen: positieTellingSpelerInWedstrijd(w, p.id) }));
+        blok.appendChild(bouwPositiesTabel(rijen));
+      }
+      el.appendChild(blok);
+    });
+  }
 
   const totaalBlok = document.createElement('div');
   totaalBlok.className = 'wedstrijd-blok totaal-blok';
   const totaalKop = document.createElement('h4');
-  totaalKop.textContent = `Totaal — alle wedstrijden (${state.wedstrijden.length})`;
+  totaalKop.textContent = meerdereWedstrijden
+    ? `Totaal — alle wedstrijden (${state.wedstrijden.length})`
+    : `${state.wedstrijden[0].naam} — ${formatDatumNL(state.wedstrijden[0].datum)}`;
   totaalBlok.appendChild(totaalKop);
 
   const totaalRijen = state.players.map(p => {
