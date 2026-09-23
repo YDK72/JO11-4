@@ -4,7 +4,11 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Opstelling — JO11-4</title>
-<link rel="stylesheet" href="style.css">
+<!-- ?v=N is een cache-buster: GitHub Pages cachet bestanden 10 minuten, dus
+     verhoog dit nummer (hier én bij de <script>-tag onderaan) bij elke
+     inhoudelijke wijziging aan style.css/app.js, anders zien toestellen de
+     oude versie tot de cache verloopt. -->
+<link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
 <header class="app-header">
@@ -84,6 +88,6 @@
   <p id="footerUitleg">Gegevens worden lokaal in je browser bewaard. Stel Firebase in (zie README) om ze automatisch tussen toestellen te synchroniseren.</p>
 </footer>
 
-<script type="module" src="app.js"></script>
+<script type="module" src="app.js?v=3"></script>
 </body>
 </html>
