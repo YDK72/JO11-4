@@ -5,6 +5,8 @@ voor 4 kwarten van 15 minuten (8 vs 8) samen te stellen — geïnspireerd op de 
 "Lineup: Opstelling Maken". Geen automatische generator: jij kiest zelf wie waar
 staat, per kwart.
 
+**Live:** <https://ydk72.github.io/JO11-4/>
+
 ## Functionaliteit
 
 - Spelerslijst met aan-/afwezig per wedstrijd, spelers toevoegen/verwijderen.
