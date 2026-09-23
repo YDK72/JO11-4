@@ -107,6 +107,12 @@ main {
 
 .remove-btn { border: none; background: transparent; color: #b3261e; cursor: pointer; font-size: 1rem; }
 
+/* ---------- Wedstrijd-kiezer ---------- */
+.wedstrijd-rij { display: flex; align-items: flex-end; gap: 0.75rem; flex-wrap: wrap; }
+.wedstrijd-veld { display: flex; flex-direction: column; gap: 0.3rem; font-size: 0.82rem; color: var(--gray); }
+.wedstrijd-veld input, .wedstrijd-veld select { padding: 0.45rem; border: 1px solid var(--border); border-radius: 8px; font-size: 0.9rem; color: var(--text); }
+#btnVerwijderWedstrijd:disabled { opacity: 0.5; cursor: not-allowed; }
+
 /* ---------- Kwart-tabs ---------- */
 .kwart-tabs { display: flex; gap: 0.4rem; margin-bottom: 0.9rem; flex-wrap: wrap; }
 .kwart-tab {
@@ -219,42 +225,20 @@ main {
 .minuten-balk-binnen { height: 100%; background: var(--green); border-radius: 6px; }
 .minuten-getal { width: 3.4rem; text-align: right; color: var(--gray); flex-shrink: 0; }
 
-.wisselmoment-kop { font-weight: 700; font-size: 0.88rem; margin: 0.8rem 0 0.3rem; }
-.wisselmoment-lijst { list-style: none; margin: 0 0 0.4rem; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; font-size: 0.87rem; }
-.wissel-in { color: var(--green); }
-.wissel-uit { color: #b3261e; }
-.wissel-geen { color: var(--gray); font-style: italic; }
+.wedstrijd-blok { border: 1px solid var(--border); border-radius: 8px; padding: 0.75rem 0.9rem; margin-bottom: 0.75rem; }
+.wedstrijd-blok h4 { margin: 0 0 0.5rem; font-size: 0.88rem; }
+.wedstrijd-blok.totaal-blok { background: var(--green-light); border-color: var(--green); }
+.wedstrijd-blok.totaal-blok h4 { color: var(--green); }
 
-.alle-kwarten-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 0.8rem; margin-top: 0.4rem; }
-@media (max-width: 640px) { .alle-kwarten-grid { grid-template-columns: repeat(2, 1fr); } }
-.mini-kwart-kaart { border: 1px solid var(--border); border-radius: 8px; padding: 0.5rem; }
-.mini-kwart-kop { font-size: 0.8rem; font-weight: 700; text-align: center; margin-bottom: 0.35rem; }
-.mini-veld { position: relative; width: 100%; aspect-ratio: 200 / 280; background: #eaf6ec; border-radius: 6px; overflow: hidden; }
-.mini-token {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  font-size: 0.55rem;
-  font-weight: 700;
-  color: white;
-  padding: 0.12rem 0.3rem;
-  border-radius: 6px;
-  white-space: nowrap;
-  max-width: 90%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  background: var(--gray);
-}
-.mini-token.keeper { background: var(--amber); }
-.mini-token.verdediging { background: var(--blue); }
-.mini-token.midden { background: var(--purple); }
-.mini-token.aanval { background: var(--orange); }
-.mini-bank { font-size: 0.68rem; color: var(--gray); margin-top: 0.3rem; text-align: center; }
+.posities-tabel { width: 100%; min-width: 420px; border-collapse: collapse; font-size: 0.86rem; }
+.posities-tabel th, .posities-tabel td { padding: 0.35rem 0.5rem; border-bottom: 1px solid var(--border); text-align: left; }
+.posities-tabel th:not(:first-child), .posities-tabel td:not(:first-child) { text-align: center; }
 
 .app-footer { text-align: center; color: var(--gray); font-size: 0.8rem; margin-top: 2rem; padding: 0 1rem; }
 
 @media print {
   .app-header, .app-footer, #spelersCard, .hint, .collapse-toggle, #btnPrint, #btnDeelLink,
-  .kwart-tabs, .kwart-instellingen, .sync-status {
+  .kwart-tabs, .kwart-instellingen, .sync-status, .wedstrijd-rij {
     display: none !important;
   }
   main { max-width: none; }

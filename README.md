@@ -9,15 +9,21 @@ staat, per kwart.
 
 ## Functionaliteit
 
+- Wedstrijden bewaren onder een zelfgekozen naam en datum; wissel via het
+  dropdown-menu bovenaan tussen bestaande wedstrijden of maak een nieuwe aan.
+  Alle wedstrijden blijven bewaard totdat je ze zelf verwijdert.
 - Spelerslijst met aan-/afwezig per wedstrijd, spelers toevoegen/verwijderen.
 - Eén vaste keeper (standaard Nick) die automatisch wordt ingevuld, maar per
   kwart handmatig overschreven kan worden.
 - 5 formaties (standaard 1-2-3-2), per kwart apart te kiezen.
 - Klik-en-kies opstelling per kwart, met een "bank"-lijst van niet-opgestelde
-  aanwezige spelers.
+  aanwezige spelers. Bankspelers kun je kleurcoderen (V/M/A) voor de linie
+  waarvoor ze klaarstaan het volgende kwart.
 - "Kopieer vorig kwart" en "Maak dit kwart leeg" als snelknoppen.
-- Overzicht: gespeelde minuten per speler, wissels tussen kwarten, en een
-  compact overzicht van alle 4 kwarten naast elkaar (handig om af te drukken).
+- Overzicht: gespeelde minuten per speler (huidige wedstrijd én alle
+  wedstrijden samen, per wedstrijd uitgesplitst met totalen onderaan), en
+  gespeelde posities per speler over alle wedstrijden, ook per wedstrijd
+  uitgesplitst met totalen onderaan.
 - Alles in het Nederlands.
 
 ## Gegevens bewaren en tussen toestellen delen

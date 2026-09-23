@@ -12,9 +12,11 @@ const FIREBASE_CONFIG = {
 };
 
 const LIJNEN = ['verdediging', 'midden', 'aanval'];
+const ALLE_LIJNEN = ['keeper', 'verdediging', 'midden', 'aanval'];
 const LIJN_LABEL = { keeper: 'Keeper', verdediging: 'Verdediging', midden: 'Midden', aanval: 'Aanval' };
 const KWART_DUUR = 15; // minuten
 const AANTAL_KWARTEN = 4;
+const MAANDEN = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
 
 const FORMATIES = [
   { label: '1-2-3-2', verdediging: 2, midden: 3, aanval: 2 },
@@ -35,6 +37,17 @@ function escapeHtml(str) {
   return String(str).replace(/[&<>"']/g, c => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
   ));
+}
+
+function vandaag() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function formatDatumNL(datumStr) {
+  if (!datumStr) return '';
+  const [j, m, d] = datumStr.split('-').map(Number);
+  if (!j || !m || !d) return datumStr;
+  return `${d} ${MAANDEN[m - 1]} ${j}`;
 }
 
 function formatieVinden(label) {
@@ -58,44 +71,101 @@ function nieuwKwart(formatieLabel) {
 }
 
 function nieuweSpelerState(naam, keeper) {
-  return { id: uid(), naam, aanwezig: true, keeper: !!keeper };
+  return { id: uid(), naam, keeper: !!keeper };
+}
+
+// De vaste keeper vult de keeperspositie automatisch bij een lege opstelling —
+// blijft daarna gewoon een los, handmatig aan te passen vakje zoals alle andere.
+// Overschrijft nooit een al ingevulde plek, dus veilig om vaker aan te roepen.
+function vulVasteKeeperIn(spelersLijst, wedstrijd) {
+  const vast = spelersLijst.find(p => p.keeper && wedstrijd.aanwezig[p.id]);
+  if (!vast) return;
+  wedstrijd.kwarten.forEach(kwart => {
+    if (!kwart.opstelling.keeper[0]) kwart.opstelling.keeper[0] = vast.id;
+  });
+}
+
+function nieuweWedstrijd(naam, datum, spelersLijst, aanwezigBron) {
+  const wedstrijd = {
+    id: uid(),
+    naam,
+    datum,
+    aanwezig: {},
+    kwarten: Array.from({ length: AANTAL_KWARTEN }, () => nieuwKwart(STANDAARD_FORMATIE)),
+  };
+  spelersLijst.forEach(p => {
+    wedstrijd.aanwezig[p.id] = aanwezigBron ? !!aanwezigBron[p.id] : true;
+  });
+  vulVasteKeeperIn(spelersLijst, wedstrijd);
+  return wedstrijd;
 }
 
 function standaardState() {
+  const players = DEFAULT_SPELERS_NAMEN.map(naam => nieuweSpelerState(naam, naam === 'Nick'));
+  const eersteWedstrijd = nieuweWedstrijd('Wedstrijd 1', vandaag(), players);
   return {
-    versie: 1,
+    versie: 2,
     teamNaam: "AFC'34 — JO11-4",
-    players: DEFAULT_SPELERS_NAMEN.map((naam, i) => nieuweSpelerState(naam, naam === 'Nick')),
-    kwarten: Array.from({ length: AANTAL_KWARTEN }, () => nieuwKwart(STANDAARD_FORMATIE)),
+    players,
+    wedstrijden: [eersteWedstrijd],
+    huidigeWedstrijdId: eersteWedstrijd.id,
   };
 }
 
 let state = standaardState();
 
-// De vaste keeper vult de keeperspositie automatisch bij een lege opstelling —
-// blijft daarna gewoon een los, handmatig aan te passen vakje zoals alle andere.
-function vulVasteKeeperIn() {
-  const vast = state.players.find(p => p.keeper && p.aanwezig);
-  if (!vast) return;
-  state.kwarten.forEach(kwart => {
-    if (!kwart.opstelling.keeper[0]) kwart.opstelling.keeper[0] = vast.id;
-  });
+function huidigeWedstrijd() {
+  return state.wedstrijden.find(w => w.id === state.huidigeWedstrijdId) || state.wedstrijden[0];
 }
 
 function migreerState() {
   if (!Array.isArray(state.players)) state.players = [];
-  if (!Array.isArray(state.kwarten) || state.kwarten.length !== AANTAL_KWARTEN) {
-    state.kwarten = Array.from({ length: AANTAL_KWARTEN }, () => nieuwKwart(STANDAARD_FORMATIE));
-  }
   state.players.forEach(p => {
-    if (p.aanwezig == null) p.aanwezig = true;
     if (p.keeper == null) p.keeper = false;
   });
-  state.kwarten.forEach(kwart => {
-    if (!kwart.formatie) kwart.formatie = STANDAARD_FORMATIE;
-    if (!kwart.opstelling) kwart.opstelling = legeOpstelling(kwart.formatie);
-    if (!kwart.bankKleur) kwart.bankKleur = {};
+
+  // Oude versie (v1): één doorlopende opstelling zonder wedstrijdhistorie.
+  // Zet die om naar de eerste wedstrijd zodat bestaande gegevens bewaard blijven.
+  if (Array.isArray(state.kwarten) && !Array.isArray(state.wedstrijden)) {
+    const aanwezigBron = {};
+    state.players.forEach(p => { aanwezigBron[p.id] = p.aanwezig !== false; });
+    const wedstrijd = {
+      id: uid(),
+      naam: 'Wedstrijd 1',
+      datum: vandaag(),
+      aanwezig: aanwezigBron,
+      kwarten: state.kwarten,
+    };
+    state.wedstrijden = [wedstrijd];
+    state.huidigeWedstrijdId = wedstrijd.id;
+    delete state.kwarten;
+  }
+  state.players.forEach(p => { delete p.aanwezig; });
+
+  if (!Array.isArray(state.wedstrijden) || !state.wedstrijden.length) {
+    const w = nieuweWedstrijd('Wedstrijd 1', vandaag(), state.players);
+    state.wedstrijden = [w];
+    state.huidigeWedstrijdId = w.id;
+  }
+  if (!state.wedstrijden.some(w => w.id === state.huidigeWedstrijdId)) {
+    state.huidigeWedstrijdId = state.wedstrijden[0].id;
+  }
+  state.wedstrijden.forEach(w => {
+    if (!w.id) w.id = uid();
+    if (!w.naam) w.naam = 'Wedstrijd';
+    if (!w.datum) w.datum = vandaag();
+    if (!w.aanwezig) w.aanwezig = {};
+    state.players.forEach(p => { if (w.aanwezig[p.id] == null) w.aanwezig[p.id] = true; });
+    if (!Array.isArray(w.kwarten) || w.kwarten.length !== AANTAL_KWARTEN) {
+      w.kwarten = Array.from({ length: AANTAL_KWARTEN }, () => nieuwKwart(STANDAARD_FORMATIE));
+    }
+    w.kwarten.forEach(kwart => {
+      if (!kwart.formatie) kwart.formatie = STANDAARD_FORMATIE;
+      if (!kwart.opstelling) kwart.opstelling = legeOpstelling(kwart.formatie);
+      if (!kwart.bankKleur) kwart.bankKleur = {};
+    });
   });
+  state.versie = 2;
 }
 
 // ---------- Opslag: Firebase (indien geconfigureerd) met lokale fallback ----------
@@ -193,20 +263,80 @@ function opslaan() {
   }, 400);
 }
 
+// ---------- Wedstrijd kiezen/aanmaken/verwijderen ----------
+
+function renderWedstrijdKiezer() {
+  const wedstrijd = huidigeWedstrijd();
+
+  const select = document.getElementById('wedstrijdSelect');
+  select.innerHTML = '';
+  state.wedstrijden.forEach(w => {
+    const opt = document.createElement('option');
+    opt.value = w.id;
+    opt.textContent = `${w.naam} — ${formatDatumNL(w.datum)}`;
+    if (w.id === wedstrijd.id) opt.selected = true;
+    select.appendChild(opt);
+  });
+
+  document.getElementById('wedstrijdNaam').value = wedstrijd.naam;
+  document.getElementById('wedstrijdDatum').value = wedstrijd.datum;
+  document.getElementById('btnVerwijderWedstrijd').disabled = state.wedstrijden.length <= 1;
+}
+
+document.getElementById('wedstrijdSelect').addEventListener('change', e => {
+  state.huidigeWedstrijdId = e.target.value;
+  huidigKwartIndex = 0;
+  renderAlles();
+});
+
+document.getElementById('wedstrijdNaam').addEventListener('change', e => {
+  huidigeWedstrijd().naam = e.target.value.trim() || huidigeWedstrijd().naam;
+  opslaan();
+  renderWedstrijdKiezer();
+});
+
+document.getElementById('wedstrijdDatum').addEventListener('change', e => {
+  huidigeWedstrijd().datum = e.target.value || vandaag();
+  opslaan();
+  renderWedstrijdKiezer();
+});
+
+document.getElementById('btnNieuweWedstrijd').addEventListener('click', () => {
+  const naam = `Wedstrijd ${state.wedstrijden.length + 1}`;
+  const wedstrijd = nieuweWedstrijd(naam, vandaag(), state.players, huidigeWedstrijd().aanwezig);
+  state.wedstrijden.push(wedstrijd);
+  state.huidigeWedstrijdId = wedstrijd.id;
+  huidigKwartIndex = 0;
+  opslaan();
+  renderAlles();
+});
+
+document.getElementById('btnVerwijderWedstrijd').addEventListener('click', () => {
+  if (state.wedstrijden.length <= 1) return;
+  const wedstrijd = huidigeWedstrijd();
+  if (!confirm(`Wedstrijd "${wedstrijd.naam}" (${formatDatumNL(wedstrijd.datum)}) definitief verwijderen? Dit kan niet ongedaan gemaakt worden.`)) return;
+  state.wedstrijden = state.wedstrijden.filter(w => w.id !== wedstrijd.id);
+  state.huidigeWedstrijdId = state.wedstrijden[0].id;
+  huidigKwartIndex = 0;
+  opslaan();
+  renderAlles();
+});
+
 // ---------- Spelers ----------
 
 function renderSpelers() {
   const tbody = document.getElementById('spelersTbody');
   tbody.innerHTML = '';
+  const wedstrijd = huidigeWedstrijd();
   state.players.forEach(p => {
     const tr = document.createElement('tr');
 
     const tdAanwezig = document.createElement('td');
     const cbAanwezig = document.createElement('input');
     cbAanwezig.type = 'checkbox';
-    cbAanwezig.checked = p.aanwezig;
+    cbAanwezig.checked = !!wedstrijd.aanwezig[p.id];
     cbAanwezig.addEventListener('change', () => {
-      p.aanwezig = cbAanwezig.checked;
+      wedstrijd.aanwezig[p.id] = cbAanwezig.checked;
       opslaan();
       renderAlles();
     });
@@ -243,11 +373,14 @@ function renderSpelers() {
     btnRemove.textContent = '✕';
     btnRemove.addEventListener('click', () => {
       state.players = state.players.filter(x => x.id !== p.id);
-      state.kwarten.forEach(kwart => {
-        Object.keys(kwart.opstelling).forEach(lijn => {
-          kwart.opstelling[lijn] = kwart.opstelling[lijn].map(id => (id === p.id ? null : id));
+      state.wedstrijden.forEach(w => {
+        delete w.aanwezig[p.id];
+        w.kwarten.forEach(kwart => {
+          Object.keys(kwart.opstelling).forEach(lijn => {
+            kwart.opstelling[lijn] = kwart.opstelling[lijn].map(id => (id === p.id ? null : id));
+          });
+          delete kwart.bankKleur[p.id];
         });
-        delete kwart.bankKleur[p.id];
       });
       opslaan();
       renderAlles();
@@ -264,7 +397,10 @@ document.getElementById('nieuweSpelerForm').addEventListener('submit', e => {
   const inp = document.getElementById('nieuweSpelerNaam');
   const naam = inp.value.trim();
   if (!naam) return;
-  state.players.push(nieuweSpelerState(naam, false));
+  const nieuwePersoon = nieuweSpelerState(naam, false);
+  state.players.push(nieuwePersoon);
+  // Alleen in de huidige wedstrijd aanwezig; oudere wedstrijden vonden al plaats zonder hem.
+  state.wedstrijden.forEach(w => { w.aanwezig[nieuwePersoon.id] = (w.id === state.huidigeWedstrijdId); });
   inp.value = '';
   opslaan();
   renderAlles();
@@ -290,15 +426,16 @@ function renderKwartTabs() {
 function renderFormatieSelect() {
   const select = document.getElementById('formatieSelect');
   select.innerHTML = '';
+  const wedstrijd = huidigeWedstrijd();
   FORMATIES.forEach(f => {
     const opt = document.createElement('option');
     opt.value = f.label;
     opt.textContent = `${f.label} (K-V-M-A)`;
-    if (f.label === state.kwarten[huidigKwartIndex].formatie) opt.selected = true;
+    if (f.label === wedstrijd.kwarten[huidigKwartIndex].formatie) opt.selected = true;
     select.appendChild(opt);
   });
   select.onchange = () => {
-    const kwart = state.kwarten[huidigKwartIndex];
+    const kwart = wedstrijd.kwarten[huidigKwartIndex];
     const heeftSpelers = Object.values(kwart.opstelling).some(arr => arr.some(Boolean));
     if (heeftSpelers && !confirm('Van formatie wisselen maakt dit kwart leeg. Doorgaan?')) {
       select.value = kwart.formatie;
@@ -306,7 +443,7 @@ function renderFormatieSelect() {
     }
     kwart.formatie = select.value;
     kwart.opstelling = legeOpstelling(select.value);
-    if (huidigKwartIndex === 0) vulVasteKeeperIn();
+    vulVasteKeeperIn(state.players, wedstrijd);
     opslaan();
     renderAlles();
   };
@@ -314,14 +451,14 @@ function renderFormatieSelect() {
 
 document.getElementById('btnKopieerVorig').addEventListener('click', () => {
   if (huidigKwartIndex === 0) return;
-  const vorige = state.kwarten[huidigKwartIndex - 1];
-  state.kwarten[huidigKwartIndex] = JSON.parse(JSON.stringify(vorige));
+  const wedstrijd = huidigeWedstrijd();
+  wedstrijd.kwarten[huidigKwartIndex] = JSON.parse(JSON.stringify(wedstrijd.kwarten[huidigKwartIndex - 1]));
   opslaan();
   renderAlles();
 });
 
 document.getElementById('btnLeegKwart').addEventListener('click', () => {
-  const kwart = state.kwarten[huidigKwartIndex];
+  const kwart = huidigeWedstrijd().kwarten[huidigKwartIndex];
   const heeftSpelers = Object.values(kwart.opstelling).some(arr => arr.some(Boolean));
   if (heeftSpelers && !confirm('Dit kwart helemaal leegmaken?')) return;
   kwart.opstelling = legeOpstelling(kwart.formatie);
@@ -367,18 +504,14 @@ function alleToegewezenIds(kwart) {
   return ids;
 }
 
-function spelerNaam(id) {
-  const p = state.players.find(x => x.id === id);
-  return p ? p.naam : '?';
-}
-
 function renderVeld() {
   const container = document.getElementById('veldContainer');
   container.innerHTML = veldAchtergrondSvg();
 
-  const kwart = state.kwarten[huidigKwartIndex];
+  const wedstrijd = huidigeWedstrijd();
+  const kwart = wedstrijd.kwarten[huidigKwartIndex];
   const formatie = formatieVinden(kwart.formatie);
-  const aanwezig = state.players.filter(p => p.aanwezig);
+  const aanwezig = state.players.filter(p => wedstrijd.aanwezig[p.id]);
   const toegewezen = alleToegewezenIds(kwart);
 
   plekCoordinaten(formatie).forEach(slot => {
@@ -415,9 +548,10 @@ function renderVeld() {
 function renderBank() {
   const el = document.getElementById('bankLijst');
   el.innerHTML = '';
-  const kwart = state.kwarten[huidigKwartIndex];
+  const wedstrijd = huidigeWedstrijd();
+  const kwart = wedstrijd.kwarten[huidigKwartIndex];
   const toegewezen = alleToegewezenIds(kwart);
-  const bank = state.players.filter(p => p.aanwezig && !toegewezen.has(p.id));
+  const bank = state.players.filter(p => wedstrijd.aanwezig[p.id] && !toegewezen.has(p.id));
   const isLaatsteKwart = huidigKwartIndex === AANTAL_KWARTEN - 1;
 
   if (!bank.length) {
@@ -459,101 +593,150 @@ function renderBank() {
   });
 }
 
-// ---------- Overzicht: minuten, wissels, alle kwarten ----------
+// ---------- Overzicht: minuten & posities, per wedstrijd + totalen ----------
 
-function renderMinutenOverzicht() {
-  const el = document.getElementById('minutenOverzicht');
+function minutenSpelerInWedstrijd(wedstrijd, playerId) {
+  return wedstrijd.kwarten.filter(k => alleToegewezenIds(k).has(playerId)).length * KWART_DUUR;
+}
+
+function positieTellingSpelerInWedstrijd(wedstrijd, playerId) {
+  const tellingen = { keeper: 0, verdediging: 0, midden: 0, aanval: 0 };
+  wedstrijd.kwarten.forEach(kwart => {
+    ALLE_LIJNEN.forEach(lijn => {
+      if (kwart.opstelling[lijn].includes(playerId)) tellingen[lijn]++;
+    });
+  });
+  return tellingen;
+}
+
+function bouwMinutenRij(naam, minuten, max) {
+  const rij = document.createElement('div');
+  rij.className = 'minuten-rij';
+  rij.innerHTML = `<span class="minuten-naam">${escapeHtml(naam)}</span>
+    <span class="minuten-balk-buiten"><span class="minuten-balk-binnen" style="width:${max ? (minuten / max) * 100 : 0}%"></span></span>
+    <span class="minuten-getal">${minuten}'</span>`;
+  return rij;
+}
+
+function bouwPositiesTabel(rijen) {
+  const table = document.createElement('table');
+  table.className = 'posities-tabel';
+  table.innerHTML = '<thead><tr><th>Speler</th><th>Keeper</th><th>Verdediging</th><th>Midden</th><th>Aanval</th></tr></thead>';
+  const tbody = document.createElement('tbody');
+  rijen.forEach(({ naam, tellingen }) => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${escapeHtml(naam)}</td>
+      <td>${tellingen.keeper || ''}</td>
+      <td>${tellingen.verdediging || ''}</td>
+      <td>${tellingen.midden || ''}</td>
+      <td>${tellingen.aanval || ''}</td>`;
+    tbody.appendChild(tr);
+  });
+  table.appendChild(tbody);
+  const wrap = document.createElement('div');
+  wrap.className = 'tabel-scroll';
+  wrap.appendChild(table);
+  return wrap;
+}
+
+function renderMinutenHuidig() {
+  const el = document.getElementById('minutenHuidig');
   el.innerHTML = '';
-  const aanwezig = state.players.filter(p => p.aanwezig);
+  const wedstrijd = huidigeWedstrijd();
+  const aanwezig = state.players.filter(p => wedstrijd.aanwezig[p.id]);
   if (!aanwezig.length) { el.innerHTML = '<p class="hint">Nog geen aanwezige spelers.</p>'; return; }
   const max = AANTAL_KWARTEN * KWART_DUUR;
   aanwezig.forEach(p => {
-    const kwartenGespeeld = state.kwarten.filter(k => alleToegewezenIds(k).has(p.id)).length;
-    const minuten = kwartenGespeeld * KWART_DUUR;
-    const rij = document.createElement('div');
-    rij.className = 'minuten-rij';
-    rij.innerHTML = `<span class="minuten-naam">${escapeHtml(p.naam)}</span>
-      <span class="minuten-balk-buiten"><span class="minuten-balk-binnen" style="width:${(minuten / max) * 100}%"></span></span>
-      <span class="minuten-getal">${minuten}'</span>`;
-    el.appendChild(rij);
+    el.appendChild(bouwMinutenRij(p.naam, minutenSpelerInWedstrijd(wedstrijd, p.id), max));
   });
 }
 
-function renderWisselOverzicht() {
-  const el = document.getElementById('wisselOverzicht');
+function renderMinutenAlle() {
+  const el = document.getElementById('minutenAlle');
   el.innerHTML = '';
-  for (let i = 0; i < AANTAL_KWARTEN - 1; i++) {
-    const van = alleToegewezenIds(state.kwarten[i]);
-    const naar = alleToegewezenIds(state.kwarten[i + 1]);
-    const eruit = [...van].filter(id => !naar.has(id));
-    const erin = [...naar].filter(id => !van.has(id));
+  if (!state.wedstrijden.length) return;
+  const maxPerWedstrijd = AANTAL_KWARTEN * KWART_DUUR;
 
-    const kop = document.createElement('div');
-    kop.className = 'wisselmoment-kop';
-    kop.textContent = `Kwart ${i + 1} → Kwart ${i + 2}`;
-    el.appendChild(kop);
+  state.wedstrijden.forEach(w => {
+    const blok = document.createElement('div');
+    blok.className = 'wedstrijd-blok';
+    const kop = document.createElement('h4');
+    kop.textContent = `${w.naam} — ${formatDatumNL(w.datum)}`;
+    blok.appendChild(kop);
 
-    const lijst = document.createElement('ul');
-    lijst.className = 'wisselmoment-lijst';
-    eruit.forEach(id => {
-      const li = document.createElement('li');
-      li.className = 'wissel-uit';
-      li.textContent = `⬅ ${spelerNaam(id)} eruit`;
-      lijst.appendChild(li);
-    });
-    erin.forEach(id => {
-      const li = document.createElement('li');
-      li.className = 'wissel-in';
-      li.textContent = `➡ ${spelerNaam(id)} erin`;
-      lijst.appendChild(li);
-    });
-    if (!eruit.length && !erin.length) {
-      const li = document.createElement('li');
-      li.className = 'wissel-geen';
-      li.textContent = 'Geen wijzigingen';
-      lijst.appendChild(li);
+    const aanwezig = state.players.filter(p => w.aanwezig[p.id]);
+    if (!aanwezig.length) {
+      const leeg = document.createElement('p');
+      leeg.className = 'hint';
+      leeg.textContent = 'Geen aanwezige spelers.';
+      blok.appendChild(leeg);
+    } else {
+      const lijst = document.createElement('div');
+      lijst.className = 'minuten-overzicht';
+      aanwezig.forEach(p => lijst.appendChild(bouwMinutenRij(p.naam, minutenSpelerInWedstrijd(w, p.id), maxPerWedstrijd)));
+      blok.appendChild(lijst);
     }
-    el.appendChild(lijst);
-  }
+    el.appendChild(blok);
+  });
+
+  const totaalBlok = document.createElement('div');
+  totaalBlok.className = 'wedstrijd-blok totaal-blok';
+  const totaalKop = document.createElement('h4');
+  totaalKop.textContent = `Totaal — alle wedstrijden (${state.wedstrijden.length})`;
+  totaalBlok.appendChild(totaalKop);
+
+  const totaalLijst = document.createElement('div');
+  totaalLijst.className = 'minuten-overzicht';
+  const maxTotaal = state.wedstrijden.length * maxPerWedstrijd;
+  state.players.forEach(p => {
+    const totaal = state.wedstrijden.reduce((som, w) => som + minutenSpelerInWedstrijd(w, p.id), 0);
+    totaalLijst.appendChild(bouwMinutenRij(p.naam, totaal, maxTotaal));
+  });
+  totaalBlok.appendChild(totaalLijst);
+  el.appendChild(totaalBlok);
 }
 
-function renderAlleKwartenGrid() {
-  const el = document.getElementById('alleKwartenGrid');
+function renderPositiesAlle() {
+  const el = document.getElementById('positiesAlle');
   el.innerHTML = '';
-  state.kwarten.forEach((kwart, i) => {
-    const formatie = formatieVinden(kwart.formatie);
-    const kaart = document.createElement('div');
-    kaart.className = 'mini-kwart-kaart';
+  if (!state.wedstrijden.length) return;
 
-    const start = i * KWART_DUUR;
-    const kop = document.createElement('div');
-    kop.className = 'mini-kwart-kop';
-    kop.textContent = `Kwart ${i + 1} (${start}'-${start + KWART_DUUR}') · ${kwart.formatie}`;
-    kaart.appendChild(kop);
+  state.wedstrijden.forEach(w => {
+    const blok = document.createElement('div');
+    blok.className = 'wedstrijd-blok';
+    const kop = document.createElement('h4');
+    kop.textContent = `${w.naam} — ${formatDatumNL(w.datum)}`;
+    blok.appendChild(kop);
 
-    const veld = document.createElement('div');
-    veld.className = 'mini-veld';
-    plekCoordinaten(formatie).forEach(slot => {
-      const id = kwart.opstelling[slot.lijn][slot.index];
-      if (!id) return;
-      const tok = document.createElement('div');
-      tok.className = 'mini-token ' + slot.lijn;
-      tok.style.left = slot.x + '%';
-      tok.style.top = slot.y + '%';
-      tok.textContent = spelerNaam(id);
-      veld.appendChild(tok);
-    });
-    kaart.appendChild(veld);
-
-    const toegewezen = alleToegewezenIds(kwart);
-    const bank = state.players.filter(p => p.aanwezig && !toegewezen.has(p.id)).map(p => p.naam);
-    const bankEl = document.createElement('div');
-    bankEl.className = 'mini-bank';
-    bankEl.textContent = 'Bank: ' + (bank.join(', ') || '—');
-    kaart.appendChild(bankEl);
-
-    el.appendChild(kaart);
+    const aanwezig = state.players.filter(p => w.aanwezig[p.id]);
+    if (!aanwezig.length) {
+      const leeg = document.createElement('p');
+      leeg.className = 'hint';
+      leeg.textContent = 'Geen aanwezige spelers.';
+      blok.appendChild(leeg);
+    } else {
+      const rijen = aanwezig.map(p => ({ naam: p.naam, tellingen: positieTellingSpelerInWedstrijd(w, p.id) }));
+      blok.appendChild(bouwPositiesTabel(rijen));
+    }
+    el.appendChild(blok);
   });
+
+  const totaalBlok = document.createElement('div');
+  totaalBlok.className = 'wedstrijd-blok totaal-blok';
+  const totaalKop = document.createElement('h4');
+  totaalKop.textContent = `Totaal — alle wedstrijden (${state.wedstrijden.length})`;
+  totaalBlok.appendChild(totaalKop);
+
+  const totaalRijen = state.players.map(p => {
+    const tellingen = { keeper: 0, verdediging: 0, midden: 0, aanval: 0 };
+    state.wedstrijden.forEach(w => {
+      const t = positieTellingSpelerInWedstrijd(w, p.id);
+      ALLE_LIJNEN.forEach(lijn => { tellingen[lijn] += t[lijn]; });
+    });
+    return { naam: p.naam, tellingen };
+  });
+  totaalBlok.appendChild(bouwPositiesTabel(totaalRijen));
+  el.appendChild(totaalBlok);
 }
 
 // ---------- Overig ----------
@@ -590,18 +773,19 @@ document.querySelectorAll('.collapse-toggle').forEach(btn => {
 
 function renderAlles() {
   document.getElementById('teamNaam').textContent = state.teamNaam;
+  renderWedstrijdKiezer();
   renderSpelers();
   renderKwartTabs();
   renderFormatieSelect();
   renderVeld();
   renderBank();
-  renderMinutenOverzicht();
-  renderWisselOverzicht();
-  renderAlleKwartenGrid();
+  renderMinutenHuidig();
+  renderMinutenAlle();
+  renderPositiesAlle();
 }
 
 (async function init() {
   await initOpslag();
-  vulVasteKeeperIn();
+  state.wedstrijden.forEach(w => vulVasteKeeperIn(state.players, w));
   renderAlles();
 })();
