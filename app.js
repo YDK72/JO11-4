@@ -13,7 +13,7 @@ const FIREBASE_CONFIG = null;
 //   appId: "..."
 // };
 
-const LIJNEN = ['aanval', 'midden', 'verdediging'];
+const LIJNEN = ['verdediging', 'midden', 'aanval'];
 const LIJN_LABEL = { keeper: 'Keeper', verdediging: 'Verdediging', midden: 'Midden', aanval: 'Aanval' };
 const KWART_DUUR = 15; // minuten
 const AANTAL_KWARTEN = 4;
@@ -55,7 +55,8 @@ function legeOpstelling(formatieLabel) {
 }
 
 function nieuwKwart(formatieLabel) {
-  return { formatie: formatieLabel, opstelling: legeOpstelling(formatieLabel) };
+  // bankKleur: per bankspeler (id) de linie waarvoor hij klaarstaat het volgende kwart.
+  return { formatie: formatieLabel, opstelling: legeOpstelling(formatieLabel), bankKleur: {} };
 }
 
 function nieuweSpelerState(naam, keeper) {
@@ -95,6 +96,7 @@ function migreerState() {
   state.kwarten.forEach(kwart => {
     if (!kwart.formatie) kwart.formatie = STANDAARD_FORMATIE;
     if (!kwart.opstelling) kwart.opstelling = legeOpstelling(kwart.formatie);
+    if (!kwart.bankKleur) kwart.bankKleur = {};
   });
 }
 
@@ -247,6 +249,7 @@ function renderSpelers() {
         Object.keys(kwart.opstelling).forEach(lijn => {
           kwart.opstelling[lijn] = kwart.opstelling[lijn].map(id => (id === p.id ? null : id));
         });
+        delete kwart.bankKleur[p.id];
       });
       opslaan();
       renderAlles();
@@ -417,14 +420,43 @@ function renderBank() {
   const kwart = state.kwarten[huidigKwartIndex];
   const toegewezen = alleToegewezenIds(kwart);
   const bank = state.players.filter(p => p.aanwezig && !toegewezen.has(p.id));
+  const isLaatsteKwart = huidigKwartIndex === AANTAL_KWARTEN - 1;
+
   if (!bank.length) {
     el.innerHTML = '<p class="bank-leeg">Niemand op de bank dit kwart.</p>';
     return;
   }
+
   bank.forEach(p => {
+    const gekozenLijn = kwart.bankKleur[p.id] || null;
     const div = document.createElement('div');
-    div.className = 'bank-speler';
-    div.textContent = p.naam;
+    div.className = 'bank-speler' + (gekozenLijn ? ' bank-lijn-' + gekozenLijn : '');
+
+    const naam = document.createElement('span');
+    naam.className = 'bank-speler-naam';
+    naam.textContent = p.naam;
+    div.appendChild(naam);
+
+    if (!isLaatsteKwart) {
+      const chips = document.createElement('div');
+      chips.className = 'bank-lijn-chips';
+      LIJNEN.forEach(lijn => {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'bank-lijn-chip ' + lijn + (gekozenLijn === lijn ? ' actief' : '');
+        chip.title = `Volgend kwart: ${LIJN_LABEL[lijn]}`;
+        chip.textContent = LIJN_LABEL[lijn][0];
+        chip.addEventListener('click', () => {
+          if (kwart.bankKleur[p.id] === lijn) delete kwart.bankKleur[p.id];
+          else kwart.bankKleur[p.id] = lijn;
+          opslaan();
+          renderBank();
+        });
+        chips.appendChild(chip);
+      });
+      div.appendChild(chips);
+    }
+
     el.appendChild(div);
   });
 }

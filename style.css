@@ -174,13 +174,42 @@ main {
 .bank-speler {
   background: var(--gray-light);
   border: 1px solid var(--border);
+  border-left: 4px solid transparent;
   border-radius: 8px;
-  padding: 0.45rem 0.7rem;
+  padding: 0.45rem 0.6rem 0.45rem 0.65rem;
   font-size: 0.88rem;
   font-weight: 600;
   color: var(--text);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
 }
+.bank-speler.bank-lijn-verdediging { border-left-color: var(--blue); }
+.bank-speler.bank-lijn-midden { border-left-color: var(--purple); }
+.bank-speler.bank-lijn-aanval { border-left-color: var(--orange); }
+.bank-speler-naam { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bank-leeg { color: var(--gray); font-size: 0.85rem; font-style: italic; }
+
+.bank-lijn-chips { display: flex; gap: 0.25rem; flex-shrink: 0; }
+.bank-lijn-chip {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  background: white;
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+  line-height: 1;
+  padding: 0;
+}
+.bank-lijn-chip.verdediging { border-color: var(--blue); color: var(--blue); }
+.bank-lijn-chip.midden { border-color: var(--purple); color: var(--purple); }
+.bank-lijn-chip.aanval { border-color: var(--orange); color: var(--orange); }
+.bank-lijn-chip.verdediging.actief { background: var(--blue); color: white; }
+.bank-lijn-chip.midden.actief { background: var(--purple); color: white; }
+.bank-lijn-chip.aanval.actief { background: var(--orange); color: white; }
 
 /* ---------- Overzicht ---------- */
 .minuten-overzicht { display: flex; flex-direction: column; gap: 0.3rem; }
