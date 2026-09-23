@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Opstelling — JO11-4</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="app-header">
+  <h1>Opstelling <span class="team-name" id="teamNaam" contenteditable="true" spellcheck="false">AFC'34 — JO11-4</span></h1>
+  <div class="header-actions">
+    <span class="sync-status" id="syncStatus">Lokaal (nog niet gesynchroniseerd)</span>
+    <button id="btnDeelLink" class="btn btn-ghost" title="Kopieer de link om dit vanaf een ander toestel te openen">🔗 Deel-link</button>
+    <button id="btnPrint" class="btn btn-ghost" title="Afdrukken of als PDF opslaan">🖨️ Afdrukken</button>
+  </div>
+</header>
+
+<main>
+  <section class="card" id="spelersCard">
+    <h2>Spelers <button class="collapse-toggle" data-target="spelersBody">−</button></h2>
+    <div id="spelersBody">
+      <p class="hint">Vink "aanwezig" aan voor spelers die vandaag meespelen — dat kan per wedstrijd verschillen. Eén speler is de vaste keeper.</p>
+      <div class="tabel-scroll">
+        <table id="spelersTabel" class="spelers-tabel">
+          <thead>
+            <tr>
+              <th>Aanwezig</th>
+              <th>Naam</th>
+              <th>Vaste keeper</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="spelersTbody"></tbody>
+        </table>
+      </div>
+      <form id="nieuweSpelerForm" class="inline-form">
+        <input type="text" id="nieuweSpelerNaam" placeholder="Naam nieuwe speler" required>
+        <button type="submit" class="btn">+ Speler toevoegen</button>
+      </form>
+    </div>
+  </section>
+
+  <section class="card" id="kwartCard">
+    <h2>Opstelling per kwart</h2>
+    <div class="kwart-tabs" id="kwartTabs"></div>
+
+    <div class="kwart-instellingen">
+      <label>
+        Formatie (dit kwart)
+        <select id="formatieSelect"></select>
+      </label>
+      <button id="btnKopieerVorig" class="btn btn-small">⬅️ Kopieer vorig kwart</button>
+      <button id="btnLeegKwart" class="btn btn-small">🗑️ Maak dit kwart leeg</button>
+    </div>
+
+    <p class="hint">Klik op een positie op het veld om er een aanwezige speler in te zetten. Spelers die niet in de opstelling staan, verschijnen hieronder als bank.</p>
+
+    <div class="veld-wrap">
+      <div class="veld-container" id="veldContainer"></div>
+      <div class="bank-wrap">
+        <h3>Bank</h3>
+        <div id="bankLijst" class="bank-lijst"></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card" id="overzichtCard">
+    <h2>Overzicht wedstrijd <button class="collapse-toggle" data-target="overzichtBody">−</button></h2>
+    <div id="overzichtBody">
+      <h3>Gespeelde minuten per speler</h3>
+      <div id="minutenOverzicht" class="minuten-overzicht"></div>
+
+      <h3>Wissels tussen kwarten</h3>
+      <div id="wisselOverzicht"></div>
+
+      <h3>Alle kwarten op een rij</h3>
+      <div class="alle-kwarten-grid" id="alleKwartenGrid"></div>
+    </div>
+  </section>
+</main>
+
+<footer class="app-footer">
+  <p id="footerUitleg">Gegevens worden lokaal in je browser bewaard. Stel Firebase in (zie README) om ze automatisch tussen toestellen te synchroniseren.</p>
+</footer>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
