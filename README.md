@@ -20,10 +20,9 @@ staat, per kwart.
   aanwezige spelers. Bankspelers kun je kleurcoderen (V/M/A) voor de linie
   waarvoor ze klaarstaan het volgende kwart.
 - "Kopieer vorig kwart" en "Maak dit kwart leeg" als snelknoppen.
-- Overzicht: gespeelde minuten per speler (huidige wedstrijd én alle
-  wedstrijden samen, per wedstrijd uitgesplitst met totalen onderaan), en
-  gespeelde posities per speler over alle wedstrijden, ook per wedstrijd
-  uitgesplitst met totalen onderaan.
+- Overzicht: gespeelde minuten per speler (huidige wedstrijd, en totalen over
+  alle wedstrijden samen), en gespeelde posities per speler (totalen over
+  alle wedstrijden samen).
 - Alles in het Nederlands.
 
 ## Gegevens bewaren en tussen toestellen delen
