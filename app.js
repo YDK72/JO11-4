@@ -600,11 +600,15 @@ function minutenSpelerInWedstrijd(wedstrijd, playerId) {
 }
 
 function positieTellingSpelerInWedstrijd(wedstrijd, playerId) {
-  const tellingen = { keeper: 0, verdediging: 0, midden: 0, aanval: 0 };
+  const tellingen = { keeper: 0, verdediging: 0, midden: 0, aanval: 0, bank: 0 };
   wedstrijd.kwarten.forEach(kwart => {
-    ALLE_LIJNEN.forEach(lijn => {
-      if (kwart.opstelling[lijn].includes(playerId)) tellingen[lijn]++;
-    });
+    if (alleToegewezenIds(kwart).has(playerId)) {
+      ALLE_LIJNEN.forEach(lijn => {
+        if (kwart.opstelling[lijn].includes(playerId)) tellingen[lijn]++;
+      });
+    } else if (wedstrijd.aanwezig[playerId]) {
+      tellingen.bank++;
+    }
   });
   return tellingen;
 }
@@ -621,7 +625,7 @@ function bouwMinutenRij(naam, minuten, max) {
 function bouwPositiesTabel(rijen) {
   const table = document.createElement('table');
   table.className = 'posities-tabel';
-  table.innerHTML = '<thead><tr><th>Speler</th><th>Keeper</th><th>Verdediging</th><th>Midden</th><th>Aanval</th></tr></thead>';
+  table.innerHTML = '<thead><tr><th>Speler</th><th>Keeper</th><th>Verdediging</th><th>Midden</th><th>Aanval</th><th>Bank</th></tr></thead>';
   const tbody = document.createElement('tbody');
   rijen.forEach(({ naam, tellingen }) => {
     const tr = document.createElement('tr');
@@ -629,7 +633,8 @@ function bouwPositiesTabel(rijen) {
       <td>${tellingen.keeper || ''}</td>
       <td>${tellingen.verdediging || ''}</td>
       <td>${tellingen.midden || ''}</td>
-      <td>${tellingen.aanval || ''}</td>`;
+      <td>${tellingen.aanval || ''}</td>
+      <td>${tellingen.bank || ''}</td>`;
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
@@ -686,10 +691,10 @@ function renderPositiesAlle() {
   totaalBlok.appendChild(totaalKop);
 
   const totaalRijen = state.players.map(p => {
-    const tellingen = { keeper: 0, verdediging: 0, midden: 0, aanval: 0 };
+    const tellingen = { keeper: 0, verdediging: 0, midden: 0, aanval: 0, bank: 0 };
     state.wedstrijden.forEach(w => {
       const t = positieTellingSpelerInWedstrijd(w, p.id);
-      ALLE_LIJNEN.forEach(lijn => { tellingen[lijn] += t[lijn]; });
+      ALLE_LIJNEN.concat('bank').forEach(lijn => { tellingen[lijn] += t[lijn]; });
     });
     return { naam: p.naam, tellingen };
   });
