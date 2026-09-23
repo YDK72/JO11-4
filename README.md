@@ -22,14 +22,21 @@ staat, per kwart.
 
 ## Gegevens bewaren en tussen toestellen delen
 
-Standaard bewaart de app alles **lokaal in de browser** (localStorage) van het
-toestel waarop je hem opent. Dat werkt meteen, zonder instellingen, maar de
-gegevens staan dan niet automatisch ook op je andere toestellen (bijv. telefoon
-én tablet).
+De app is gekoppeld aan een gratis Firebase-project (Cloud Firestore, zonder
+inlog). Elke wijziging wordt automatisch bewaard en verschijnt op elk toestel
+dat dezelfde link opent (de `?team=...`-code in de URL bepaalt welke gegevens
+je ziet) — er is geen aparte "opslaan"-knop nodig. Rechtsboven in de app zie je
+de status: "✅ Gesynchroniseerd" betekent dat het werkt.
 
-Wil je dezelfde gegevens op meerdere toestellen zien, dan kun je **gratis en
-zonder inlog** een Firebase-project koppelen. Dit is een eenmalige,
-handmatige stap die je zelf moet doen (ik kan geen account voor je aanmaken):
+Werkt de synchronisatie een keer niet (geen internet, Firebase plat), dan valt
+de app automatisch terug op lokale opslag in de browser — er gaat nooit iets
+verloren, alleen de synchronisatie tussen toestellen ontbreekt dan tijdelijk.
+
+<details>
+<summary>Eigen Firebase-project koppelen (bijv. voor een ander team)</summary>
+
+Dit is een eenmalige, handmatige stap die je zelf moet doen (ik kan geen
+account voor je aanmaken):
 
 1. Ga naar [console.firebase.google.com](https://console.firebase.google.com/)
    en log in met een Google-account. Klik op **"Project toevoegen"** en volg de
@@ -76,9 +83,7 @@ handmatige stap die je zelf moet doen (ik kan geen account voor je aanmaken):
    op je andere toestellen, of met een mede-trainer, om dezelfde gegevens te
    zien en te bewerken.
 
-Werkt Firebase niet (geen internet, geen configuratie, of een fout) dan valt de
-app automatisch terug op lokale opslag — er gaat nooit iets verloren, alleen de
-synchronisatie tussen toestellen ontbreekt dan.
+</details>
 
 ## Lokaal bekijken
 

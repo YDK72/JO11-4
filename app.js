@@ -2,16 +2,14 @@
 // Leeg = de app werkt volledig lokaal (per toestel apart, in localStorage).
 // Vul dit in met je eigen Firebase-project (zie README.md, sectie "Cross-device
 // synchronisatie instellen") om dezelfde gegevens op al je toestellen te zien.
-const FIREBASE_CONFIG = null;
-// Voorbeeld:
-// const FIREBASE_CONFIG = {
-//   apiKey: "AIza...",
-//   authDomain: "jouw-project.firebaseapp.com",
-//   projectId: "jouw-project",
-//   storageBucket: "jouw-project.appspot.com",
-//   messagingSenderId: "...",
-//   appId: "..."
-// };
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyCb4aLbRkpzRrZX88zpdb4Oi-FpzCChwuQ",
+  authDomain: "opstelling-jo11-4.firebaseapp.com",
+  projectId: "opstelling-jo11-4",
+  storageBucket: "opstelling-jo11-4.firebasestorage.app",
+  messagingSenderId: "173872419685",
+  appId: "1:173872419685:web:65fd78e9760a57dfe3c78c",
+};
 
 const LIJNEN = ['verdediging', 'midden', 'aanval'];
 const LIJN_LABEL = { keeper: 'Keeper', verdediging: 'Verdediging', midden: 'Midden', aanval: 'Aanval' };
