@@ -25,6 +25,10 @@ staat, per kwart.
 - **Haalbaarheid vooraf** (onder de spelerstabel): laat per linie zien hoeveel
   geschikte spelers er zijn en meldt wanneer eerlijke speeltijd met de gekozen
   posities niet haalbaar is.
+- **Sluitende lijst**: controleert of de primaire posities ongeveer naar het
+  aantal plekken verdeeld zijn (bij 11 veldspelers en 1-2-3-2: 3 verdedigers,
+  5 middenvelders, 3 aanvallers) en of er per linie evenveel spelers secundair
+  binnenkomen als er secundair weggaan, met tips wat je moet aanpassen.
 - **Genereer hele wedstrijd**: deelt alle kwarten/blokken in één keer in met de
   aanwezige spelers en de gekozen indeling. De vaste keeper blijft in de goal.
   Eerlijke speeltijd gaat voor (maximaal 1 kwart/blok verschil; wie in eerdere

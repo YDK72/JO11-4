@@ -1253,6 +1253,62 @@ function analyseHaalbaarheid(wedstrijd) {
   return { regels, problemen, doel, formatie: f.label, leeg: false };
 }
 
+// Controleert of de primaire en secundaire posities samen een "sluitende lijst" vormen:
+// - de primaire posities zijn ongeveer verdeeld naar het aantal plekken per linie (met reserves);
+// - per linie komen er ongeveer evenveel spelers secundair binnen als er primaire spelers van
+//   die linie secundair weggaan, zodat iedereen minstens één keer secundair kan spelen
+//   zonder dat een linie leegloopt of overvol raakt.
+function analyseSluitend(wedstrijd) {
+  const aanwezig = state.players.filter(p => wedstrijd.aanwezig[p.id]);
+  const vast = aanwezig.find(p => p.keeper) || null;
+  const pool = aanwezig.filter(p => p !== vast);
+  const f = formatieVinden(wedstrijd.kwarten[0].formatie);
+  const plekken = { verdediging: f.verdediging, midden: f.midden, aanval: f.aanval };
+  const totaal = LIJNEN.reduce((som, l) => som + plekken[l], 0);
+  const n = pool.length;
+
+  // Ideale verdeling van de primaire posities (grootste-restmethode).
+  const ideaal = {};
+  const resten = [];
+  let verdeeld = 0;
+  LIJNEN.forEach(lijn => {
+    const exact = (n * plekken[lijn]) / totaal;
+    ideaal[lijn] = Math.floor(exact);
+    verdeeld += ideaal[lijn];
+    resten.push([lijn, exact - ideaal[lijn]]);
+  });
+  resten.sort((a, b) => b[1] - a[1]);
+  for (let k = 0; k < n - verdeeld; k++) ideaal[resten[k][0]]++;
+
+  const regels = LIJNEN.map(lijn => {
+    const primair = pool.filter(p => positiesVan(wedstrijd, p.id).primair === lijn);
+    return {
+      lijn,
+      primair: primair.length,
+      ideaal: ideaal[lijn],
+      weg: primair.filter(p => positiesVan(wedstrijd, p.id).secundair).length,
+      binnen: pool.filter(p => {
+        const x = positiesVan(wedstrijd, p.id);
+        return x.secundair === lijn && x.primair && x.primair !== lijn;
+      }).length,
+    };
+  });
+  const flexibel = pool.filter(p => isFlexibel(wedstrijd, p.id));
+  const zonderSecundair = pool.filter(p => !isFlexibel(wedstrijd, p.id) && !positiesVan(wedstrijd, p.id).secundair);
+
+  const tips = [];
+  regels.forEach(r => {
+    const naam = LIJN_LABEL[r.lijn];
+    if (r.primair - r.ideaal >= 2) tips.push(`${naam}: ${r.primair} spelers hebben dit als primair, ideaal is ${r.ideaal}. Zet er ${r.primair - r.ideaal} over naar een linie met te weinig primaire spelers.`);
+    if (r.ideaal - r.primair >= 2) tips.push(`${naam}: maar ${r.primair} spelers hebben dit als primair, ideaal is ${r.ideaal}.`);
+    if (r.binnen - r.weg >= 2) tips.push(`${naam}: ${r.binnen} spelers komen hier secundair binnen, maar er gaan er maar ${r.weg} van de primaire spelers secundair weg. Kies bij ${r.binnen - r.weg} van die ${r.binnen} een andere secundaire positie.`);
+    if (r.weg - r.binnen >= 2) tips.push(`${naam}: ${r.weg} primaire spelers gaan secundair weg, maar er komen er maar ${r.binnen} binnen. Geef ${r.weg - r.binnen} speler(s) van een andere linie ${naam} als secundaire positie.`);
+  });
+  if (zonderSecundair.length) tips.push(`Geen secundaire positie: ${zonderSecundair.map(p => p.naam).join(', ')}.`);
+
+  return { regels, flexibel, tips, sluitend: !tips.length, n };
+}
+
 function renderHaalbaarheid() {
   const el = document.getElementById('haalbaarheid');
   el.innerHTML = '';
@@ -1295,6 +1351,46 @@ function renderHaalbaarheid() {
     uitleg.textContent = `${a.doel} De generator geeft voorrang aan eerlijke speeltijd en zet iemand alleen buiten zijn posities als het niet anders kan.`;
     el.appendChild(uitleg);
   }
+  const s = analyseSluitend(wedstrijd);
+  const sluitKop = document.createElement('h4');
+  sluitKop.className = 'sluitend-kop';
+  sluitKop.textContent = 'Sluitende lijst (primair en secundair)';
+  el.appendChild(sluitKop);
+
+  const sluitLijst = document.createElement('ul');
+  sluitLijst.className = 'haalbaarheid-regels';
+  s.regels.forEach(r => {
+    const li = document.createElement('li');
+    const evenwicht = Math.abs(r.binnen - r.weg) <= 1 && Math.abs(r.primair - r.ideaal) <= 1;
+    li.className = evenwicht ? '' : 'tekort';
+    li.textContent = `${evenwicht ? '✓' : '✗'} ${LIJN_LABEL[r.lijn]}: ${r.primair} primair (ideaal ${r.ideaal}) · ${r.weg} gaan secundair weg · ${r.binnen} komen secundair binnen`;
+    sluitLijst.appendChild(li);
+  });
+  el.appendChild(sluitLijst);
+
+  const sluitStatus = document.createElement('p');
+  sluitStatus.className = 'haalbaarheid-status ' + (s.sluitend ? 'ok' : 'let-op');
+  sluitStatus.textContent = s.sluitend
+    ? '✅ De lijst is sluitend: iedereen kan minstens één keer secundair spelen zonder dat een linie leegloopt.'
+    : '⚠️ De lijst is nog niet sluitend:';
+  el.appendChild(sluitStatus);
+  if (s.tips.length) {
+    const ul = document.createElement('ul');
+    ul.className = 'haalbaarheid-problemen';
+    s.tips.forEach(t => {
+      const li = document.createElement('li');
+      li.textContent = t;
+      ul.appendChild(li);
+    });
+    el.appendChild(ul);
+  }
+  if (s.flexibel.length) {
+    const fl = document.createElement('p');
+    fl.className = 'hint';
+    fl.textContent = `Flexibele spelers (geen posities ingesteld) tellen hier niet mee: ${s.flexibel.map(p => p.naam).join(', ')}.`;
+    el.appendChild(fl);
+  }
+
   const noot = document.createElement('p');
   noot.className = 'hint';
   noot.textContent = `Berekend met formatie ${a.formatie} (eerste ${periodeWoord(wedstrijd)}); spelers zonder posities tellen overal mee.`;
