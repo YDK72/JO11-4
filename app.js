@@ -282,6 +282,7 @@ async function initOpslag() {
 }
 
 function opslaan() {
+  genereerMelding = null; // handmatige wijziging: de melding over de laatste generatie klopt niet meer
   localStorage.setItem(LOCAL_KEY, JSON.stringify(state));
   if (!firestore) return;
   clearTimeout(opslaanTimer);
@@ -772,6 +773,145 @@ function renderPositiesAlle() {
   el.appendChild(totaalBlok);
 }
 
+// ---------- Opstelling genereren ----------
+
+let genereerMelding = null; // { wedstrijdId, tekst }
+
+function schud(lijst) {
+  const kopie = [...lijst];
+  for (let i = kopie.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [kopie[i], kopie[j]] = [kopie[j], kopie[i]];
+  }
+  return kopie;
+}
+
+// Deelt alle blokken van de wedstrijd automatisch in met de aanwezige spelers.
+// - De vaste keeper (indien aanwezig) staat steeds in de goal.
+// - De bankbeurten rouleren, zodat elke andere speler evenveel blokken speelt (verschil
+//   maximaal 1 blok). Wie in eerdere wedstrijden al het meest speelde, zit als eerste.
+// - Wie doorspeelt houdt zijn plek; een invaller neemt de plek over van wie eruit gaat,
+//   bij voorkeur op de linie waar hij tot nu toe het minst stond.
+// De gekozen formatie per blok blijft behouden; alles is daarna handmatig aan te passen.
+function genereerOpstelling(wedstrijd) {
+  const periodes = aantalPeriodes(wedstrijd);
+  const gewicht = periodeDuur(wedstrijd) / KWART_DUUR;
+  const aanwezig = state.players.filter(p => wedstrijd.aanwezig[p.id]);
+  const vast = aanwezig.find(p => p.keeper) || null;
+  const andere = state.wedstrijden.filter(w => w.id !== wedstrijd.id);
+
+  const minutenEerder = {};
+  const lijnTelling = {};
+  aanwezig.forEach(p => {
+    minutenEerder[p.id] = andere.reduce((som, w) => som + minutenSpelerInWedstrijd(w, p.id), 0);
+    const t = { keeper: 0, verdediging: 0, midden: 0, aanval: 0 };
+    andere.forEach(w => {
+      const x = positieTellingSpelerInWedstrijd(w, p.id);
+      ALLE_LIJNEN.forEach(lijn => { t[lijn] += x[lijn]; });
+    });
+    lijnTelling[p.id] = t;
+  });
+
+  // Willekeurige volgorde bij gelijke stand, zodat opnieuw genereren een andere variant geeft.
+  const pool = schud(aanwezig.filter(p => p !== vast)).sort((a, b) => minutenEerder[b.id] - minutenEerder[a.id]);
+  const formaties = wedstrijd.kwarten.map(k => formatieVinden(k.formatie));
+  const plaatsenPer = formaties.map(f => f.verdediging + f.midden + f.aanval + (vast ? 0 : 1));
+
+  const n = pool.length;
+  let wijzer = 0;
+  const spelend = plaatsenPer.map(plaatsen => {
+    const b = Math.max(0, n - plaatsen);
+    const bank = new Set();
+    for (let k = 0; k < b; k++) bank.add((wijzer + k) % n);
+    wijzer = n ? (wijzer + b) % n : 0;
+    return pool.filter((_, i) => !bank.has(i));
+  });
+
+  let vorigeSlot = {};
+  const lijnPerPeriode = [];
+  wedstrijd.kwarten.forEach((kwart, p) => {
+    const slots = plekCoordinaten(formaties[p]).filter(s => !vast || s.lijn !== 'keeper');
+    const vrij = new Map(slots.map(s => [`${s.lijn}:${s.index}`, s]));
+    const toegewezen = {};
+    const geplaatst = new Set();
+
+    spelend[p].forEach(sp => {
+      const sleutel = vorigeSlot[sp.id];
+      if (sleutel && vrij.has(sleutel)) {
+        toegewezen[sleutel] = sp.id;
+        vrij.delete(sleutel);
+        geplaatst.add(sp.id);
+      }
+    });
+    spelend[p].filter(sp => !geplaatst.has(sp.id)).forEach(sp => {
+      let beste = null;
+      let score = Infinity;
+      vrij.forEach((s, sleutel) => {
+        if (lijnTelling[sp.id][s.lijn] < score) { beste = sleutel; score = lijnTelling[sp.id][s.lijn]; }
+      });
+      if (beste) { toegewezen[beste] = sp.id; vrij.delete(beste); }
+    });
+
+    kwart.opstelling = legeOpstelling(kwart.formatie);
+    kwart.bankKleur = {};
+    if (vast) kwart.opstelling.keeper[0] = vast.id;
+    vorigeSlot = {};
+    lijnPerPeriode[p] = {};
+    Object.entries(toegewezen).forEach(([sleutel, id]) => {
+      const [lijn, index] = sleutel.split(':');
+      kwart.opstelling[lijn][Number(index)] = id;
+      vorigeSlot[id] = sleutel;
+      lijnPerPeriode[p][id] = lijn;
+      lijnTelling[id][lijn] += gewicht;
+    });
+  });
+
+  // Bankspelers krijgen de kleur van de linie waar ze het volgende blok staan.
+  wedstrijd.kwarten.forEach((kwart, p) => {
+    if (p === periodes - 1) return;
+    pool.forEach(sp => {
+      if (spelend[p].includes(sp)) return;
+      const lijn = lijnPerPeriode[p + 1][sp.id];
+      if (lijn && lijn !== 'keeper') kwart.bankKleur[sp.id] = lijn;
+    });
+  });
+
+  const gespeeld = pool.map(sp => spelend.filter(s => s.includes(sp)).length * periodeDuur(wedstrijd));
+  const delen = [];
+  if (!pool.length) {
+    delen.push('Geen veldspelers aanwezig.');
+  } else {
+    const min = Math.min(...gespeeld);
+    const max = Math.max(...gespeeld);
+    delen.push(`Opstelling gegenereerd: elke veldspeler speelt ${min === max ? fmtGetal(min) : `${fmtGetal(min)}–${fmtGetal(max)}`} minuten.`);
+  }
+  if (vast) delen.push(`${vast.naam} staat steeds in de goal.`);
+  if (aanwezig.length < 8) delen.push('Let op: minder dan 8 spelers, dus niet alle plekken zijn gevuld.');
+  return delen.join(' ');
+}
+
+document.getElementById('btnGenereer').addEventListener('click', () => {
+  const wedstrijd = huidigeWedstrijd();
+  if (!state.players.some(p => wedstrijd.aanwezig[p.id])) {
+    genereerMelding = { wedstrijdId: wedstrijd.id, tekst: 'Vink eerst de aanwezige spelers aan.' };
+    renderGenereerMelding();
+    return;
+  }
+  const heeftOpstelling = wedstrijd.kwarten.some(k =>
+    LIJNEN.some(lijn => k.opstelling[lijn].some(Boolean)));
+  if (heeftOpstelling && !confirm(`Dit overschrijft de opstelling van alle ${aantalPeriodes(wedstrijd)} ${aantalPeriodes(wedstrijd) === 8 ? 'blokken' : 'kwarten'} van deze wedstrijd. Je kunt daarna alles nog zelf aanpassen. Doorgaan?`)) return;
+  const tekst = genereerOpstelling(wedstrijd);
+  huidigKwartIndex = 0;
+  opslaan();
+  genereerMelding = { wedstrijdId: wedstrijd.id, tekst };
+  renderAlles();
+});
+
+function renderGenereerMelding() {
+  const el = document.getElementById('genereerMelding');
+  el.textContent = genereerMelding && genereerMelding.wedstrijdId === huidigeWedstrijd().id ? genereerMelding.tekst : '';
+}
+
 // ---------- Overig ----------
 
 document.getElementById('btnPrint').addEventListener('click', () => window.print());
@@ -809,6 +949,7 @@ function renderAlles() {
   renderWedstrijdKiezer();
   renderSpelers();
   renderKwartTabs();
+  renderGenereerMelding();
   renderFormatieSelect();
   renderVeld();
   renderBank();

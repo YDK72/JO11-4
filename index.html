@@ -8,7 +8,7 @@
      verhoog dit nummer (hier én bij de <script>-tag onderaan) bij elke
      inhoudelijke wijziging aan style.css/app.js, anders zien toestellen de
      oude versie tot de cache verloopt. -->
-<link rel="stylesheet" href="style.css?v=8">
+<link rel="stylesheet" href="style.css?v=9">
 </head>
 <body>
 <header class="app-header">
@@ -74,6 +74,11 @@
 
   <section class="card" id="kwartCard">
     <h2 id="kwartTitel">Opstelling per kwart</h2>
+    <div class="genereer-rij">
+      <button id="btnGenereer" class="btn btn-primary" title="Deelt alle blokken automatisch en zo eerlijk mogelijk in met de aanwezige spelers">✨ Genereer opstelling</button>
+      <span class="hint" id="genereerMelding"></span>
+    </div>
+
     <div class="kwart-tabs" id="kwartTabs"></div>
 
     <div class="kwart-instellingen">
@@ -115,6 +120,6 @@
   <p id="footerUitleg">Gegevens worden lokaal in je browser bewaard. Stel Firebase in (zie README) om ze automatisch tussen toestellen te synchroniseren.</p>
 </footer>
 
-<script type="module" src="app.js?v=8"></script>
+<script type="module" src="app.js?v=9"></script>
 </body>
 </html>
