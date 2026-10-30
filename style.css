@@ -136,6 +136,9 @@ main {
 .positie-waarschuwing { color: #b3261e; font-size: 0.85rem; margin: 0 0 0.6rem; }
 .positie-waarschuwing:empty { display: none; }
 
+.standaard-rij { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; margin-top: 0.75rem; }
+.standaard-rij .hint { margin: 0; }
+.standaard-rij .btn:disabled { opacity: 0.5; cursor: not-allowed; }
 .sluitend-kop { margin: 1rem 0 0.4rem; font-size: 0.9rem; }
 .haalbaarheid-regels { list-style: none; margin: 0 0 0.5rem; padding: 0; display: flex; flex-direction: column; gap: 0.2rem; font-size: 0.86rem; }
 .haalbaarheid-regels li.tekort { color: #b3261e; font-weight: 600; }

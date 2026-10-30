@@ -145,6 +145,7 @@ function standaardState() {
     versie: 2,
     teamNaam: "AFC'34 — JO11-4",
     players,
+    standaardPosities: {},
     wedstrijden: [eersteWedstrijd],
     huidigeWedstrijdId: eersteWedstrijd.id,
   };
@@ -168,7 +169,10 @@ function zetIndeling(wedstrijd, nieuw) {
   wedstrijd.indeling = nieuw;
 }
 
+let standaardPosAangemaakt = false; // true als de migratie de standaardlijst nog moet laten opslaan
+
 function migreerState() {
+  standaardPosAangemaakt = false;
   if (!Array.isArray(state.players)) state.players = [];
   state.players.forEach(p => {
     if (p.keeper == null) p.keeper = false;
@@ -217,7 +221,20 @@ function migreerState() {
       if (!kwart.bankKleur) kwart.bankKleur = {};
     });
   });
+  // Standaardlijst met primaire/secundaire posities: startpunt voor elke nieuwe wedstrijd.
+  // Bestaande gegevens: neem de posities van de nieuwste wedstrijd waar ze zijn ingesteld.
+  if (!state.standaardPosities || typeof state.standaardPosities !== 'object') {
+    const bron = [...state.wedstrijden].reverse().find(w =>
+      Object.values(w.posities).some(x => x && (x.primair || x.secundair)));
+    state.standaardPosities = bron ? JSON.parse(JSON.stringify(bron.posities)) : {};
+    standaardPosAangemaakt = true;
+  }
   state.versie = 2;
+}
+
+function standaardVan(id) {
+  const x = state.standaardPosities[id];
+  return { primair: (x && x.primair) || '', secundair: (x && x.secundair) || '' };
 }
 
 // ---------- Opslag: Firebase (indien geconfigureerd) met lokale fallback ----------
@@ -371,7 +388,7 @@ document.getElementById('wedstrijdDatum').addEventListener('change', e => {
 document.getElementById('btnNieuweWedstrijd').addEventListener('click', () => {
   const naam = `Wedstrijd ${state.wedstrijden.length + 1}`;
   const bron = huidigeWedstrijd();
-  const wedstrijd = nieuweWedstrijd(naam, vandaag(), state.players, bron.aanwezig, aantalPeriodes(bron), bron.posities);
+  const wedstrijd = nieuweWedstrijd(naam, vandaag(), state.players, bron.aanwezig, aantalPeriodes(bron), state.standaardPosities);
   state.wedstrijden.push(wedstrijd);
   state.huidigeWedstrijdId = wedstrijd.id;
   huidigKwartIndex = 0;
@@ -469,6 +486,7 @@ function renderSpelers() {
     btnRemove.textContent = '✕';
     btnRemove.addEventListener('click', () => {
       state.players = state.players.filter(x => x.id !== p.id);
+      delete state.standaardPosities[p.id];
       state.wedstrijden.forEach(w => {
         delete w.aanwezig[p.id];
         delete w.posities[p.id];
@@ -499,6 +517,54 @@ document.getElementById('nieuweSpelerForm').addEventListener('submit', e => {
   // Alleen in de huidige wedstrijd aanwezig; oudere wedstrijden vonden al plaats zonder hem.
   state.wedstrijden.forEach(w => { w.aanwezig[nieuwePersoon.id] = (w.id === state.huidigeWedstrijdId); });
   inp.value = '';
+  opslaan();
+  renderAlles();
+});
+
+// ---------- Standaardlijst posities ----------
+
+function afwijkingenVanStandaard(wedstrijd) {
+  return state.players.filter(p => {
+    const a = positiesVan(wedstrijd, p.id);
+    const b = standaardVan(p.id);
+    return a.primair !== b.primair || a.secundair !== b.secundair;
+  });
+}
+
+function renderStandaard() {
+  const wedstrijd = huidigeWedstrijd();
+  const heeftStandaard = state.players.some(p => standaardVan(p.id).primair || standaardVan(p.id).secundair);
+  const verschil = afwijkingenVanStandaard(wedstrijd);
+  document.getElementById('btnHerstelStandaard').disabled = !heeftStandaard || !verschil.length;
+  document.getElementById('btnBewaarStandaard').disabled = !verschil.length;
+  document.getElementById('standaardStatus').textContent = !heeftStandaard
+    ? 'Nog geen standaardlijst. Stel de posities in en klik op "Bewaar als standaard"; elke nieuwe wedstrijd begint daar dan mee.'
+    : verschil.length
+      ? `Wijkt af van de standaardlijst (die elke nieuwe wedstrijd gebruikt): ${verschil.map(p => p.naam).join(', ')}.`
+      : '✅ Gelijk aan de standaardlijst, die elke nieuwe wedstrijd als start gebruikt.';
+}
+
+document.getElementById('btnBewaarStandaard').addEventListener('click', () => {
+  const wedstrijd = huidigeWedstrijd();
+  const heeftStandaard = state.players.some(p => standaardVan(p.id).primair || standaardVan(p.id).secundair);
+  if (heeftStandaard && !confirm('De standaardlijst vervangen door de posities van deze wedstrijd? Nieuwe wedstrijden beginnen daar vanaf nu mee; bestaande wedstrijden veranderen niet.')) return;
+  state.standaardPosities = {};
+  state.players.forEach(p => {
+    const x = positiesVan(wedstrijd, p.id);
+    if (x.primair || x.secundair) state.standaardPosities[p.id] = { ...x };
+  });
+  opslaan();
+  renderAlles();
+});
+
+document.getElementById('btnHerstelStandaard').addEventListener('click', () => {
+  const wedstrijd = huidigeWedstrijd();
+  if (!confirm('De posities van deze wedstrijd terugzetten naar de standaardlijst?')) return;
+  wedstrijd.posities = {};
+  state.players.forEach(p => {
+    const x = standaardVan(p.id);
+    if (x.primair || x.secundair) wedstrijd.posities[p.id] = { ...x };
+  });
   opslaan();
   renderAlles();
 });
@@ -1505,6 +1571,7 @@ function renderAlles() {
   document.getElementById('teamNaam').textContent = state.teamNaam;
   renderWedstrijdKiezer();
   renderSpelers();
+  renderStandaard();
   renderHaalbaarheid();
   renderKwartTabs();
   renderGenereerMelding();
@@ -1519,5 +1586,6 @@ function renderAlles() {
 (async function init() {
   await initOpslag();
   state.wedstrijden.forEach(w => vulVasteKeeperIn(state.players, w));
+  if (standaardPosAangemaakt) opslaan(); // standaardlijst vastleggen zodat hij niet meer verandert
   renderAlles();
 })();

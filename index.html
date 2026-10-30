@@ -8,7 +8,7 @@
      verhoog dit nummer (hier én bij de <script>-tag onderaan) bij elke
      inhoudelijke wijziging aan style.css/app.js, anders zien toestellen de
      oude versie tot de cache verloopt. -->
-<link rel="stylesheet" href="style.css?v=15">
+<link rel="stylesheet" href="style.css?v=16">
 </head>
 <body>
 <header class="app-header">
@@ -66,6 +66,11 @@
           </thead>
           <tbody id="spelersTbody"></tbody>
         </table>
+      </div>
+      <div class="standaard-rij">
+        <button id="btnBewaarStandaard" class="btn btn-small" title="Gebruik de posities van deze wedstrijd als startlijst voor alle nieuwe wedstrijden">⭐ Bewaar als standaard</button>
+        <button id="btnHerstelStandaard" class="btn btn-small" title="Zet de posities van deze wedstrijd terug naar de standaardlijst">↩️ Terug naar standaard</button>
+        <span class="hint" id="standaardStatus"></span>
       </div>
       <h3>Haalbaarheid vooraf</h3>
       <div id="haalbaarheid" class="haalbaarheid"></div>
@@ -126,6 +131,6 @@
   <p id="footerUitleg">Gegevens worden lokaal in je browser bewaard. Stel Firebase in (zie README) om ze automatisch tussen toestellen te synchroniseren.</p>
 </footer>
 
-<script type="module" src="app.js?v=15"></script>
+<script type="module" src="app.js?v=16"></script>
 </body>
 </html>

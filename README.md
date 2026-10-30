@@ -18,8 +18,12 @@ staat, per kwart.
 - Per wedstrijd te kiezen: 4 kwarten van 15 minuten, of 8 blokken van 7,5
   minuten (4 per helft). Wisselen kan op elk moment; van 4 naar 8 wordt elk
   kwart over twee blokken gekopieerd.
-- **Primaire en secundaire positie** per speler (per wedstrijd, een nieuwe
-  wedstrijd neemt ze over). Zonder keuze is een speler overal inzetbaar. In de
+- **Primaire en secundaire positie** per speler, per wedstrijd aan te passen.
+  Elke nieuwe wedstrijd begint met de **standaardlijst** (knop "Bewaar als
+  standaard" legt de posities van de huidige wedstrijd vast; "Terug naar
+  standaard" zet een wedstrijd terug). Aanpassingen in een wedstrijd laten de
+  standaardlijst en andere wedstrijden ongemoeid. Zonder keuze is een speler
+  overal inzetbaar. In de
   dropdowns staat ★ bij de primaire en ☆ bij de secundaire positie, en een
   speler buiten zijn posities wordt gemarkeerd en gemeld.
 - **Haalbaarheid vooraf** (onder de spelerstabel): laat per linie zien hoeveel
