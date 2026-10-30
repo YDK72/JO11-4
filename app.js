@@ -1039,7 +1039,16 @@ function maakGenereerContext(wedstrijd) {
   });
   // Willekeurige volgorde bij gelijke stand, zodat opnieuw genereren een andere variant geeft.
   const pool = schud(aanwezig.filter(p => p !== vast));
-  return { aanwezig, vast, pool, eerderFractie, lijnTelling };
+  const ctx = { aanwezig, vast, pool, eerderFractie, lijnTelling, jitter: {} };
+  nieuweJitter(ctx);
+  return ctx;
+}
+
+// Kleine willekeurige afwijking per speler in de bankvolgorde, zodat er echt andere varianten
+// ontstaan. Samen met het aandeel uit eerdere wedstrijden (max 0,5) blijft dit onder 1 kwart/blok,
+// dus wie minder gespeeld heeft in deze wedstrijd blijft altijd voor.
+function nieuweJitter(ctx) {
+  ctx.aanwezig.forEach(p => { ctx.jitter[p.id] = Math.random() * 0.45; });
 }
 
 // Vult één kwart/blok in op basis van wat er in de eerdere kwarten/blokken staat:
@@ -1078,7 +1087,7 @@ function planPeriode(wedstrijd, i, ctx) {
   const vergrendeld = heeftVorige && aantalPeriodes(wedstrijd) === 8 && i % 2 === 1;
 
   const prioriteit = {};
-  pool.forEach(p => { prioriteit[p.id] = gespeeld[p.id] + 0.5 * ctx.eerderFractie[p.id]; });
+  pool.forEach(p => { prioriteit[p.id] = gespeeld[p.id] + 0.5 * ctx.eerderFractie[p.id] + (ctx.jitter[p.id] || 0); });
 
   // Wie moet nog minstens 15 minuten secundair spelen? Per rustmoment wordt hooguit een
   // evenredig deel daarvan ingepland, zodat het over de wedstrijd verspreid wordt.
@@ -1217,6 +1226,7 @@ function genereerOpstelling(wedstrijd) {
   const start = performance.now();
   for (let poging = 0; poging < 60 && (poging < 10 || performance.now() - start < 400); poging++) {
     ctx.pool = schud(ctx.pool);
+    nieuweJitter(ctx);
     wedstrijd.kwarten.forEach((_, i) => planPeriode(wedstrijd, i, ctx));
     const score = scoreWedstrijd(wedstrijd, ctx);
     if (score < besteScore) {
