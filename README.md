@@ -15,7 +15,10 @@ staat, per kwart.
 - Spelerslijst met aan-/afwezig per wedstrijd, spelers toevoegen/verwijderen.
 - Eén vaste keeper (standaard Nick) die automatisch wordt ingevuld, maar per
   kwart handmatig overschreven kan worden.
-- 5 formaties (standaard 1-2-3-2), per kwart apart te kiezen.
+- Per wedstrijd te kiezen: 4 kwarten van 15 minuten, of 8 blokken van 7,5
+  minuten (4 per helft). Wisselen kan op elk moment; van 4 naar 8 wordt elk
+  kwart over twee blokken gekopieerd.
+- 5 formaties (standaard 1-2-3-2), per kwart/blok apart te kiezen.
 - Klik-en-kies opstelling per kwart, met een "bank"-lijst van niet-opgestelde
   aanwezige spelers. Bankspelers kun je kleurcoderen (V/M/A) voor de linie
   waarvoor ze klaarstaan het volgende kwart.

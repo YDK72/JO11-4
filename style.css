@@ -126,6 +126,7 @@ main {
   color: var(--text);
 }
 .kwart-tab.actief { background: var(--green); border-color: var(--green); color: white; }
+.kwart-tab.nieuwe-helft { margin-left: 0.8rem; }
 
 .kwart-instellingen {
   display: flex;

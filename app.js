@@ -14,8 +14,9 @@ const FIREBASE_CONFIG = {
 const LIJNEN = ['verdediging', 'midden', 'aanval'];
 const ALLE_LIJNEN = ['keeper', 'verdediging', 'midden', 'aanval'];
 const LIJN_LABEL = { keeper: 'Keeper', verdediging: 'Verdediging', midden: 'Midden', aanval: 'Aanval' };
-const KWART_DUUR = 15; // minuten
-const AANTAL_KWARTEN = 4;
+const WEDSTRIJD_DUUR = 60; // minuten
+const KWART_DUUR = 15; // minuten; referentie-eenheid voor de posities-tellingen
+const STANDAARD_INDELING = 4; // 4 kwarten van 15 min; alternatief: 8 blokken van 7,5 min
 const MAANDEN = ['jan', 'feb', 'mrt', 'apr', 'mei', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
 
 const FORMATIES = [
@@ -48,6 +49,23 @@ function formatDatumNL(datumStr) {
   const [j, m, d] = datumStr.split('-').map(Number);
   if (!j || !m || !d) return datumStr;
   return `${d} ${MAANDEN[m - 1]} ${j}`;
+}
+
+function aantalPeriodes(wedstrijd) {
+  return wedstrijd.indeling === 8 ? 8 : 4;
+}
+
+function periodeDuur(wedstrijd) {
+  return WEDSTRIJD_DUUR / aantalPeriodes(wedstrijd);
+}
+
+function periodeWoord(wedstrijd) {
+  return aantalPeriodes(wedstrijd) === 8 ? 'blok' : 'kwart';
+}
+
+// 7.5 -> "7,5"; 15 -> "15"
+function fmtGetal(n) {
+  return String(Math.round(n * 100) / 100).replace('.', ',');
 }
 
 function formatieVinden(label) {
@@ -85,13 +103,14 @@ function vulVasteKeeperIn(spelersLijst, wedstrijd) {
   });
 }
 
-function nieuweWedstrijd(naam, datum, spelersLijst, aanwezigBron) {
+function nieuweWedstrijd(naam, datum, spelersLijst, aanwezigBron, indeling = STANDAARD_INDELING) {
   const wedstrijd = {
     id: uid(),
     naam,
     datum,
+    indeling,
     aanwezig: {},
-    kwarten: Array.from({ length: AANTAL_KWARTEN }, () => nieuwKwart(STANDAARD_FORMATIE)),
+    kwarten: Array.from({ length: indeling }, () => nieuwKwart(STANDAARD_FORMATIE)),
   };
   spelersLijst.forEach(p => {
     wedstrijd.aanwezig[p.id] = aanwezigBron ? !!aanwezigBron[p.id] : true;
@@ -116,6 +135,18 @@ let state = standaardState();
 
 function huidigeWedstrijd() {
   return state.wedstrijden.find(w => w.id === state.huidigeWedstrijdId) || state.wedstrijden[0];
+}
+
+// Wisselt tussen 4 kwarten en 8 blokken. Van 4 naar 8 wordt elk kwart over twee
+// blokken gekopieerd (niets gaat verloren); terug naar 4 blijft blok 1, 3, 5 en 7 over.
+function zetIndeling(wedstrijd, nieuw) {
+  if (wedstrijd.indeling === nieuw) return;
+  if (nieuw === 8) {
+    wedstrijd.kwarten = wedstrijd.kwarten.flatMap(k => [k, JSON.parse(JSON.stringify(k))]);
+  } else {
+    wedstrijd.kwarten = wedstrijd.kwarten.filter((_, i) => i % 2 === 0);
+  }
+  wedstrijd.indeling = nieuw;
 }
 
 function migreerState() {
@@ -156,8 +187,9 @@ function migreerState() {
     if (!w.datum) w.datum = vandaag();
     if (!w.aanwezig) w.aanwezig = {};
     state.players.forEach(p => { if (w.aanwezig[p.id] == null) w.aanwezig[p.id] = true; });
-    if (!Array.isArray(w.kwarten) || w.kwarten.length !== AANTAL_KWARTEN) {
-      w.kwarten = Array.from({ length: AANTAL_KWARTEN }, () => nieuwKwart(STANDAARD_FORMATIE));
+    if (w.indeling !== 8) w.indeling = 4;
+    if (!Array.isArray(w.kwarten) || w.kwarten.length !== w.indeling) {
+      w.kwarten = Array.from({ length: w.indeling }, () => nieuwKwart(STANDAARD_FORMATIE));
     }
     w.kwarten.forEach(kwart => {
       if (!kwart.formatie) kwart.formatie = STANDAARD_FORMATIE;
@@ -280,8 +312,22 @@ function renderWedstrijdKiezer() {
 
   document.getElementById('wedstrijdNaam').value = wedstrijd.naam;
   document.getElementById('wedstrijdDatum').value = wedstrijd.datum;
+  document.getElementById('indelingSelect').value = String(aantalPeriodes(wedstrijd));
   document.getElementById('btnVerwijderWedstrijd').disabled = state.wedstrijden.length <= 1;
 }
+
+document.getElementById('indelingSelect').addEventListener('change', e => {
+  const wedstrijd = huidigeWedstrijd();
+  const nieuw = Number(e.target.value) === 8 ? 8 : 4;
+  if (nieuw === 4 && !confirm('Terug naar 4 kwarten van 15 minuten: van de 8 blokken blijven blok 1, 3, 5 en 7 over (als kwart 1 t/m 4). Doorgaan?')) {
+    e.target.value = String(aantalPeriodes(wedstrijd));
+    return;
+  }
+  zetIndeling(wedstrijd, nieuw);
+  huidigKwartIndex = 0;
+  opslaan();
+  renderAlles();
+});
 
 document.getElementById('wedstrijdSelect').addEventListener('change', e => {
   state.huidigeWedstrijdId = e.target.value;
@@ -303,7 +349,7 @@ document.getElementById('wedstrijdDatum').addEventListener('change', e => {
 
 document.getElementById('btnNieuweWedstrijd').addEventListener('click', () => {
   const naam = `Wedstrijd ${state.wedstrijden.length + 1}`;
-  const wedstrijd = nieuweWedstrijd(naam, vandaag(), state.players, huidigeWedstrijd().aanwezig);
+  const wedstrijd = nieuweWedstrijd(naam, vandaag(), state.players, huidigeWedstrijd().aanwezig, aantalPeriodes(huidigeWedstrijd()));
   state.wedstrijden.push(wedstrijd);
   state.huidigeWedstrijdId = wedstrijd.id;
   huidigKwartIndex = 0;
@@ -413,14 +459,26 @@ let huidigKwartIndex = 0;
 function renderKwartTabs() {
   const el = document.getElementById('kwartTabs');
   el.innerHTML = '';
-  for (let i = 0; i < AANTAL_KWARTEN; i++) {
+  const wedstrijd = huidigeWedstrijd();
+  const aantal = aantalPeriodes(wedstrijd);
+  const duur = periodeDuur(wedstrijd);
+  const woord = periodeWoord(wedstrijd);
+  const woordHoofd = woord[0].toUpperCase() + woord.slice(1);
+  for (let i = 0; i < aantal; i++) {
     const btn = document.createElement('button');
-    btn.className = 'kwart-tab' + (i === huidigKwartIndex ? ' actief' : '');
-    const start = i * KWART_DUUR;
-    btn.textContent = `Kwart ${i + 1} (${start}'-${start + KWART_DUUR}')`;
+    const helft2Begin = aantal === 8 && i === aantal / 2;
+    btn.className = 'kwart-tab' + (i === huidigKwartIndex ? ' actief' : '') + (helft2Begin ? ' nieuwe-helft' : '');
+    btn.title = i < aantal / 2 ? '1e helft' : '2e helft';
+    const start = i * duur;
+    btn.textContent = `${woordHoofd} ${i + 1} (${fmtGetal(start)}'-${fmtGetal(start + duur)}')`;
     btn.addEventListener('click', () => { huidigKwartIndex = i; renderAlles(); });
     el.appendChild(btn);
   }
+
+  document.getElementById('kwartTitel').textContent = aantal === 8 ? 'Opstelling per blok (7,5 min)' : 'Opstelling per kwart';
+  document.getElementById('btnKopieerVorig').textContent = `⬅️ Kopieer vorig ${woord}`;
+  document.getElementById('btnLeegKwart').textContent = `🗑️ Maak dit ${woord} leeg`;
+  document.getElementById('formatieLabelTekst').textContent = `Formatie (dit ${woord})`;
 }
 
 function renderFormatieSelect() {
@@ -437,7 +495,7 @@ function renderFormatieSelect() {
   select.onchange = () => {
     const kwart = wedstrijd.kwarten[huidigKwartIndex];
     const heeftSpelers = Object.values(kwart.opstelling).some(arr => arr.some(Boolean));
-    if (heeftSpelers && !confirm('Van formatie wisselen maakt dit kwart leeg. Doorgaan?')) {
+    if (heeftSpelers && !confirm(`Van formatie wisselen maakt dit ${periodeWoord(wedstrijd)} leeg. Doorgaan?`)) {
       select.value = kwart.formatie;
       return;
     }
@@ -458,9 +516,10 @@ document.getElementById('btnKopieerVorig').addEventListener('click', () => {
 });
 
 document.getElementById('btnLeegKwart').addEventListener('click', () => {
-  const kwart = huidigeWedstrijd().kwarten[huidigKwartIndex];
+  const wedstrijd = huidigeWedstrijd();
+  const kwart = wedstrijd.kwarten[huidigKwartIndex];
   const heeftSpelers = Object.values(kwart.opstelling).some(arr => arr.some(Boolean));
-  if (heeftSpelers && !confirm('Dit kwart helemaal leegmaken?')) return;
+  if (heeftSpelers && !confirm(`Dit ${periodeWoord(wedstrijd)} helemaal leegmaken?`)) return;
   kwart.opstelling = legeOpstelling(kwart.formatie);
   opslaan();
   renderAlles();
@@ -552,10 +611,11 @@ function renderBank() {
   const kwart = wedstrijd.kwarten[huidigKwartIndex];
   const toegewezen = alleToegewezenIds(kwart);
   const bank = state.players.filter(p => wedstrijd.aanwezig[p.id] && !toegewezen.has(p.id));
-  const isLaatsteKwart = huidigKwartIndex === AANTAL_KWARTEN - 1;
+  const isLaatsteKwart = huidigKwartIndex === aantalPeriodes(wedstrijd) - 1;
+  const woord = periodeWoord(wedstrijd);
 
   if (!bank.length) {
-    el.innerHTML = '<p class="bank-leeg">Niemand op de bank dit kwart.</p>';
+    el.innerHTML = `<p class="bank-leeg">Niemand op de bank dit ${woord}.</p>`;
     return;
   }
 
@@ -576,7 +636,7 @@ function renderBank() {
         const chip = document.createElement('button');
         chip.type = 'button';
         chip.className = 'bank-lijn-chip ' + lijn + (gekozenLijn === lijn ? ' actief' : '');
-        chip.title = `Volgend kwart: ${LIJN_LABEL[lijn]}`;
+        chip.title = `Volgend ${woord}: ${LIJN_LABEL[lijn]}`;
         chip.textContent = LIJN_LABEL[lijn][0];
         chip.addEventListener('click', () => {
           if (kwart.bankKleur[p.id] === lijn) delete kwart.bankKleur[p.id];
@@ -596,18 +656,21 @@ function renderBank() {
 // ---------- Overzicht: minuten & posities, per wedstrijd + totalen ----------
 
 function minutenSpelerInWedstrijd(wedstrijd, playerId) {
-  return wedstrijd.kwarten.filter(k => alleToegewezenIds(k).has(playerId)).length * KWART_DUUR;
+  return wedstrijd.kwarten.filter(k => alleToegewezenIds(k).has(playerId)).length * periodeDuur(wedstrijd);
 }
 
+// Tellingen in kwarten van 15 min: een blok van 7,5 min telt als 0,5, zodat
+// wedstrijden met verschillende indeling samen opgeteld kunnen worden.
 function positieTellingSpelerInWedstrijd(wedstrijd, playerId) {
+  const gewicht = periodeDuur(wedstrijd) / KWART_DUUR;
   const tellingen = { keeper: 0, verdediging: 0, midden: 0, aanval: 0, bank: 0 };
   wedstrijd.kwarten.forEach(kwart => {
     if (alleToegewezenIds(kwart).has(playerId)) {
       ALLE_LIJNEN.forEach(lijn => {
-        if (kwart.opstelling[lijn].includes(playerId)) tellingen[lijn]++;
+        if (kwart.opstelling[lijn].includes(playerId)) tellingen[lijn] += gewicht;
       });
     } else if (wedstrijd.aanwezig[playerId]) {
-      tellingen.bank++;
+      tellingen.bank += gewicht;
     }
   });
   return tellingen;
@@ -618,7 +681,7 @@ function bouwMinutenRij(naam, minuten, max) {
   rij.className = 'minuten-rij';
   rij.innerHTML = `<span class="minuten-naam">${escapeHtml(naam)}</span>
     <span class="minuten-balk-buiten"><span class="minuten-balk-binnen" style="width:${max ? (minuten / max) * 100 : 0}%"></span></span>
-    <span class="minuten-getal">${minuten}'</span>`;
+    <span class="minuten-getal">${fmtGetal(minuten)}'</span>`;
   return rij;
 }
 
@@ -630,11 +693,11 @@ function bouwPositiesTabel(rijen) {
   rijen.forEach(({ naam, tellingen }) => {
     const tr = document.createElement('tr');
     tr.innerHTML = `<td>${escapeHtml(naam)}</td>
-      <td>${tellingen.keeper || ''}</td>
-      <td>${tellingen.verdediging || ''}</td>
-      <td>${tellingen.midden || ''}</td>
-      <td>${tellingen.aanval || ''}</td>
-      <td>${tellingen.bank || ''}</td>`;
+      <td>${tellingen.keeper ? fmtGetal(tellingen.keeper) : ''}</td>
+      <td>${tellingen.verdediging ? fmtGetal(tellingen.verdediging) : ''}</td>
+      <td>${tellingen.midden ? fmtGetal(tellingen.midden) : ''}</td>
+      <td>${tellingen.aanval ? fmtGetal(tellingen.aanval) : ''}</td>
+      <td>${tellingen.bank ? fmtGetal(tellingen.bank) : ''}</td>`;
     tbody.appendChild(tr);
   });
   table.appendChild(tbody);
@@ -650,7 +713,7 @@ function renderMinutenHuidig() {
   const wedstrijd = huidigeWedstrijd();
   const aanwezig = state.players.filter(p => wedstrijd.aanwezig[p.id]);
   if (!aanwezig.length) { el.innerHTML = '<p class="hint">Nog geen aanwezige spelers.</p>'; return; }
-  const max = AANTAL_KWARTEN * KWART_DUUR;
+  const max = WEDSTRIJD_DUUR;
   aanwezig.forEach(p => {
     el.appendChild(bouwMinutenRij(p.naam, minutenSpelerInWedstrijd(wedstrijd, p.id), max));
   });
@@ -660,7 +723,7 @@ function renderMinutenAlle() {
   const el = document.getElementById('minutenAlle');
   el.innerHTML = '';
   if (!state.wedstrijden.length) return;
-  const maxPerWedstrijd = AANTAL_KWARTEN * KWART_DUUR;
+  const maxPerWedstrijd = WEDSTRIJD_DUUR;
 
   const totaalBlok = document.createElement('div');
   totaalBlok.className = 'wedstrijd-blok totaal-blok';
@@ -689,6 +752,13 @@ function renderPositiesAlle() {
   const totaalKop = document.createElement('h4');
   totaalKop.textContent = `Totaal — alle wedstrijden (${state.wedstrijden.length})`;
   totaalBlok.appendChild(totaalKop);
+
+  if (state.wedstrijden.some(w => aantalPeriodes(w) === 8)) {
+    const uitleg = document.createElement('p');
+    uitleg.className = 'hint';
+    uitleg.textContent = 'Aantallen in kwarten van 15 minuten; een blok van 7,5 minuten telt als 0,5.';
+    totaalBlok.appendChild(uitleg);
+  }
 
   const totaalRijen = state.players.map(p => {
     const tellingen = { keeper: 0, verdediging: 0, midden: 0, aanval: 0, bank: 0 };
