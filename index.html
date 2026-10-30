@@ -8,7 +8,7 @@
      verhoog dit nummer (hier én bij de <script>-tag onderaan) bij elke
      inhoudelijke wijziging aan style.css/app.js, anders zien toestellen de
      oude versie tot de cache verloopt. -->
-<link rel="stylesheet" href="style.css?v=9">
+<link rel="stylesheet" href="style.css?v=13">
 </head>
 <body>
 <header class="app-header">
@@ -51,7 +51,7 @@
   <section class="card" id="spelersCard">
     <h2>Spelers <button class="collapse-toggle" data-target="spelersBody">−</button></h2>
     <div id="spelersBody">
-      <p class="hint">Vink "aanwezig" aan voor spelers die vandaag meespelen — dat kan per wedstrijd verschillen. Eén speler is de vaste keeper.</p>
+      <p class="hint">Vink "aanwezig" aan voor spelers die vandaag meespelen — dat kan per wedstrijd verschillen. Eén speler is de vaste keeper. Kies per speler (voor deze wedstrijd) een primaire en eventueel secundaire positie; zonder keuze is een speler overal inzetbaar.</p>
       <div class="tabel-scroll">
         <table id="spelersTabel" class="spelers-tabel">
           <thead>
@@ -59,12 +59,16 @@
               <th>Aanwezig</th>
               <th>Naam</th>
               <th>Vaste keeper</th>
+              <th>Primair</th>
+              <th>Secundair</th>
               <th></th>
             </tr>
           </thead>
           <tbody id="spelersTbody"></tbody>
         </table>
       </div>
+      <h3>Haalbaarheid vooraf</h3>
+      <div id="haalbaarheid" class="haalbaarheid"></div>
       <form id="nieuweSpelerForm" class="inline-form">
         <input type="text" id="nieuweSpelerNaam" placeholder="Naam nieuwe speler" required>
         <button type="submit" class="btn">+ Speler toevoegen</button>
@@ -75,7 +79,8 @@
   <section class="card" id="kwartCard">
     <h2 id="kwartTitel">Opstelling per kwart</h2>
     <div class="genereer-rij">
-      <button id="btnGenereer" class="btn btn-primary" title="Deelt alle blokken automatisch en zo eerlijk mogelijk in met de aanwezige spelers">✨ Genereer opstelling</button>
+      <button id="btnGenereer" class="btn btn-primary" title="Deelt alle kwarten/blokken in één keer zo eerlijk mogelijk in met de aanwezige spelers">✨ Genereer hele wedstrijd</button>
+      <button id="btnGenereerPeriode" class="btn" title="Vult alleen het geselecteerde kwart/blok in, op basis van de eerdere kwarten/blokken — handig bij elk rustmoment">➕ Genereer dit kwart</button>
       <span class="hint" id="genereerMelding"></span>
     </div>
 
@@ -90,7 +95,8 @@
       <button id="btnLeegKwart" class="btn btn-small">🗑️ Maak dit kwart leeg</button>
     </div>
 
-    <p class="hint">Klik op een positie op het veld om er een aanwezige speler in te zetten. Spelers die niet in de opstelling staan, verschijnen hieronder als bank.</p>
+    <p class="hint">Klik op een positie op het veld om er een aanwezige speler in te zetten. ★ = primaire positie, ☆ = secundaire positie. Spelers die niet in de opstelling staan, verschijnen hieronder als bank.</p>
+    <p class="positie-waarschuwing" id="positieWaarschuwing"></p>
 
     <div class="veld-wrap">
       <div class="veld-container" id="veldContainer"></div>
@@ -120,6 +126,6 @@
   <p id="footerUitleg">Gegevens worden lokaal in je browser bewaard. Stel Firebase in (zie README) om ze automatisch tussen toestellen te synchroniseren.</p>
 </footer>
 
-<script type="module" src="app.js?v=9"></script>
+<script type="module" src="app.js?v=13"></script>
 </body>
 </html>

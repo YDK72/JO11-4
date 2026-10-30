@@ -18,13 +18,27 @@ staat, per kwart.
 - Per wedstrijd te kiezen: 4 kwarten van 15 minuten, of 8 blokken van 7,5
   minuten (4 per helft). Wisselen kan op elk moment; van 4 naar 8 wordt elk
   kwart over twee blokken gekopieerd.
-- **Genereer opstelling**: deelt alle kwarten/blokken automatisch in met de
-  aanwezige spelers en de gekozen indeling. De vaste keeper blijft in de goal,
-  de bankbeurten rouleren zodat iedere veldspeler evenveel speelt (maximaal 1
-  blok verschil; wie in eerdere wedstrijden al het meest speelde, zit als
-  eerste). Wie doorspeelt houdt zijn plek, een invaller neemt de plek over van
-  wie eruit gaat. Daarna kun je alles nog handmatig aanpassen, of opnieuw
-  genereren voor een andere variant.
+- **Primaire en secundaire positie** per speler (per wedstrijd, een nieuwe
+  wedstrijd neemt ze over). Zonder keuze is een speler overal inzetbaar. In de
+  dropdowns staat ★ bij de primaire en ☆ bij de secundaire positie, en een
+  speler buiten zijn posities wordt gemarkeerd en gemeld.
+- **Haalbaarheid vooraf** (onder de spelerstabel): laat per linie zien hoeveel
+  geschikte spelers er zijn en meldt wanneer eerlijke speeltijd met de gekozen
+  posities niet haalbaar is.
+- **Genereer hele wedstrijd**: deelt alle kwarten/blokken in één keer in met de
+  aanwezige spelers en de gekozen indeling. De vaste keeper blijft in de goal.
+  Eerlijke speeltijd gaat voor (maximaal 1 kwart/blok verschil; wie in eerdere
+  wedstrijden al het meest speelde, zit als eerste), daarna primaire en
+  secundaire posities; buiten zijn posities komt een speler alleen als het niet
+  anders kan en dat wordt gemeld.
+- **Genereer dit kwart**: vult alleen het geselecteerde kwart/blok in, op basis
+  van wat er in de eerdere kwarten/blokken staat — bedoeld voor elk rustmoment.
+  De melding toont wie eruit en erin gaat en wie van positie wisselt.
+- Van positie wisselen gebeurt bij de generator alleen op 15, 30 en 45 minuten
+  (de rustmomenten). Bij 8 blokken blijven de posities daartussen staan en
+  neemt een invaller de plek over van wie eruit gaat.
+- Alles blijft daarna handmatig aan te passen, of opnieuw te genereren voor een
+  andere variant.
 - 5 formaties (standaard 1-2-3-2), per kwart/blok apart te kiezen.
 - Klik-en-kies opstelling per kwart, met een "bank"-lijst van niet-opgestelde
   aanwezige spelers. Bankspelers kun je kleurcoderen (V/M/A) voor de linie

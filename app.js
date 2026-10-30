@@ -68,6 +68,23 @@ function fmtGetal(n) {
   return String(Math.round(n * 100) / 100).replace('.', ',');
 }
 
+function positiesVan(wedstrijd, id) {
+  const p = wedstrijd.posities && wedstrijd.posities[id];
+  return { primair: (p && p.primair) || '', secundair: (p && p.secundair) || '' };
+}
+
+// Zonder ingestelde posities is een speler flexibel: overal inzetbaar.
+function isFlexibel(wedstrijd, id) {
+  const { primair, secundair } = positiesVan(wedstrijd, id);
+  return !primair && !secundair;
+}
+
+function isGeschikt(wedstrijd, id, lijn) {
+  if (lijn === 'keeper' || isFlexibel(wedstrijd, id)) return true;
+  const { primair, secundair } = positiesVan(wedstrijd, id);
+  return lijn === primair || lijn === secundair;
+}
+
 function formatieVinden(label) {
   return FORMATIES.find(f => f.label === label) || FORMATIES[0];
 }
@@ -103,13 +120,15 @@ function vulVasteKeeperIn(spelersLijst, wedstrijd) {
   });
 }
 
-function nieuweWedstrijd(naam, datum, spelersLijst, aanwezigBron, indeling = STANDAARD_INDELING) {
+function nieuweWedstrijd(naam, datum, spelersLijst, aanwezigBron, indeling = STANDAARD_INDELING, positiesBron = null) {
   const wedstrijd = {
     id: uid(),
     naam,
     datum,
     indeling,
     aanwezig: {},
+    // posities[spelerId] = { primair, secundair } met een van de LIJNEN of ''
+    posities: positiesBron ? JSON.parse(JSON.stringify(positiesBron)) : {},
     kwarten: Array.from({ length: indeling }, () => nieuwKwart(STANDAARD_FORMATIE)),
   };
   spelersLijst.forEach(p => {
@@ -188,6 +207,7 @@ function migreerState() {
     if (!w.aanwezig) w.aanwezig = {};
     state.players.forEach(p => { if (w.aanwezig[p.id] == null) w.aanwezig[p.id] = true; });
     if (w.indeling !== 8) w.indeling = 4;
+    if (!w.posities) w.posities = {};
     if (!Array.isArray(w.kwarten) || w.kwarten.length !== w.indeling) {
       w.kwarten = Array.from({ length: w.indeling }, () => nieuwKwart(STANDAARD_FORMATIE));
     }
@@ -350,7 +370,8 @@ document.getElementById('wedstrijdDatum').addEventListener('change', e => {
 
 document.getElementById('btnNieuweWedstrijd').addEventListener('click', () => {
   const naam = `Wedstrijd ${state.wedstrijden.length + 1}`;
-  const wedstrijd = nieuweWedstrijd(naam, vandaag(), state.players, huidigeWedstrijd().aanwezig, aantalPeriodes(huidigeWedstrijd()));
+  const bron = huidigeWedstrijd();
+  const wedstrijd = nieuweWedstrijd(naam, vandaag(), state.players, bron.aanwezig, aantalPeriodes(bron), bron.posities);
   state.wedstrijden.push(wedstrijd);
   state.huidigeWedstrijdId = wedstrijd.id;
   huidigKwartIndex = 0;
@@ -413,6 +434,34 @@ function renderSpelers() {
     });
     tdKeeper.appendChild(cbKeeper);
 
+    const bouwPositieSelect = veld => {
+      const td = document.createElement('td');
+      const select = document.createElement('select');
+      select.className = 'positie-select';
+      select.title = veld === 'primair' ? 'Primaire positie' : 'Secundaire positie';
+      [['', '—'], ...LIJNEN.map(l => [l, LIJN_LABEL[l]])].forEach(([waarde, label]) => {
+        const opt = document.createElement('option');
+        opt.value = waarde;
+        opt.textContent = label;
+        select.appendChild(opt);
+      });
+      select.value = positiesVan(wedstrijd, p.id)[veld];
+      select.addEventListener('change', () => {
+        const nieuw = { ...positiesVan(wedstrijd, p.id), [veld]: select.value };
+        if (nieuw.primair && nieuw.primair === nieuw.secundair) {
+          if (veld === 'primair') nieuw.secundair = '';
+          else nieuw.primair = '';
+        }
+        wedstrijd.posities[p.id] = nieuw;
+        opslaan();
+        renderAlles();
+      });
+      td.appendChild(select);
+      return td;
+    };
+    const tdPrimair = bouwPositieSelect('primair');
+    const tdSecundair = bouwPositieSelect('secundair');
+
     const tdRemove = document.createElement('td');
     const btnRemove = document.createElement('button');
     btnRemove.className = 'remove-btn';
@@ -422,6 +471,7 @@ function renderSpelers() {
       state.players = state.players.filter(x => x.id !== p.id);
       state.wedstrijden.forEach(w => {
         delete w.aanwezig[p.id];
+        delete w.posities[p.id];
         w.kwarten.forEach(kwart => {
           Object.keys(kwart.opstelling).forEach(lijn => {
             kwart.opstelling[lijn] = kwart.opstelling[lijn].map(id => (id === p.id ? null : id));
@@ -434,7 +484,7 @@ function renderSpelers() {
     });
     tdRemove.appendChild(btnRemove);
 
-    tr.append(tdAanwezig, tdNaam, tdKeeper, tdRemove);
+    tr.append(tdAanwezig, tdNaam, tdKeeper, tdPrimair, tdSecundair, tdRemove);
     tbody.appendChild(tr);
   });
 }
@@ -479,6 +529,7 @@ function renderKwartTabs() {
   document.getElementById('kwartTitel').textContent = aantal === 8 ? 'Opstelling per blok (7,5 min)' : 'Opstelling per kwart';
   document.getElementById('btnKopieerVorig').textContent = `⬅️ Kopieer vorig ${woord}`;
   document.getElementById('btnLeegKwart').textContent = `🗑️ Maak dit ${woord} leeg`;
+  document.getElementById('btnGenereerPeriode').textContent = `➕ Genereer dit ${woord}`;
   document.getElementById('formatieLabelTekst').textContent = `Formatie (dit ${woord})`;
 }
 
@@ -564,6 +615,13 @@ function alleToegewezenIds(kwart) {
   return ids;
 }
 
+// Breedte (in % van het veld) van een spelersvak, zodat vakken op dezelfde rij niet overlappen.
+function vakBreedte(formatie, lijn) {
+  const n = lijn === 'keeper' ? 1 : formatie[lijn];
+  if (n <= 2) return 34;
+  return Math.min(30, Math.floor(0.92 * (66 / (n - 1))));
+}
+
 function renderVeld() {
   const container = document.getElementById('veldContainer');
   container.innerHTML = veldAchtergrondSvg();
@@ -573,24 +631,46 @@ function renderVeld() {
   const formatie = formatieVinden(kwart.formatie);
   const aanwezig = state.players.filter(p => wedstrijd.aanwezig[p.id]);
   const toegewezen = alleToegewezenIds(kwart);
+  const afwijkers = [];
+
+  // ★ = primaire, ☆ = secundaire positie voor deze linie.
+  const markering = (id, lijn) => {
+    const { primair, secundair } = positiesVan(wedstrijd, id);
+    if (lijn === 'keeper') return '';
+    return lijn === primair ? '★ ' : lijn === secundair ? '☆ ' : '';
+  };
+  const rang = (id, lijn) => {
+    if (lijn === 'keeper') return 0;
+    const { primair, secundair } = positiesVan(wedstrijd, id);
+    if (lijn === primair) return 0;
+    if (lijn === secundair) return 1;
+    return isFlexibel(wedstrijd, id) ? 2 : 3;
+  };
 
   plekCoordinaten(formatie).forEach(slot => {
     const huidigeId = kwart.opstelling[slot.lijn][slot.index];
     const select = document.createElement('select');
-    select.className = 'veld-plek ' + (huidigeId ? slot.lijn : 'leeg');
+    const afwijkend = huidigeId && !isGeschikt(wedstrijd, huidigeId, slot.lijn);
+    select.className = 'veld-plek ' + (huidigeId ? slot.lijn : 'leeg') + (afwijkend ? ' afwijkend' : '');
+    if (afwijkend) {
+      select.title = 'Staat buiten zijn primaire en secundaire positie';
+      afwijkers.push(`${state.players.find(p => p.id === huidigeId).naam} (${LIJN_LABEL[slot.lijn]})`);
+    }
     select.style.left = slot.x + '%';
     select.style.top = slot.y + '%';
+    select.style.width = vakBreedte(formatie, slot.lijn) + '%';
 
     const optieLeeg = document.createElement('option');
     optieLeeg.value = '';
     optieLeeg.textContent = huidigeId ? '— Leeg maken —' : '+ Kies speler';
     select.appendChild(optieLeeg);
 
-    aanwezig.forEach(p => {
+    // Spelers waarvoor deze linie primair/secundair is komen bovenaan.
+    [...aanwezig].sort((a, b) => rang(a.id, slot.lijn) - rang(b.id, slot.lijn)).forEach(p => {
       if (toegewezen.has(p.id) && p.id !== huidigeId) return; // elders al ingezet dit kwart
       const opt = document.createElement('option');
       opt.value = p.id;
-      opt.textContent = p.naam;
+      opt.textContent = markering(p.id, slot.lijn) + p.naam;
       if (p.id === huidigeId) opt.selected = true;
       select.appendChild(opt);
     });
@@ -603,6 +683,9 @@ function renderVeld() {
 
     container.appendChild(select);
   });
+
+  document.getElementById('positieWaarschuwing').textContent =
+    afwijkers.length ? `⚠️ Buiten hun primaire/secundaire positie: ${afwijkers.join(', ')}` : '';
 }
 
 function renderBank() {
@@ -777,6 +860,13 @@ function renderPositiesAlle() {
 
 let genereerMelding = null; // { wedstrijdId, tekst }
 
+// Afwegingen van de generator (lagere kosten = beter):
+const EERLIJKHEID_GEWICHT = 15; // per extra gespeeld kwart/blok ten opzichte van de rest
+const KOST_BUITEN_POSITIE = 20; // zwaarder dan 1 kwart verschil (15), lichter dan 2 kwarten verschil (30)
+const KOST_SECUNDAIR = 1;
+const KOST_FLEXIBEL = 0.5;
+const KOST_ANDERE_LINIE = 0.2; // kleine voorkeur om op dezelfde linie te blijven
+
 function schud(lijst) {
   const kopie = [...lijst];
   for (let i = kopie.length - 1; i > 0; i--) {
@@ -786,24 +876,64 @@ function schud(lijst) {
   return kopie;
 }
 
-// Deelt alle blokken van de wedstrijd automatisch in met de aanwezige spelers.
-// - De vaste keeper (indien aanwezig) staat steeds in de goal.
-// - De bankbeurten rouleren, zodat elke andere speler evenveel blokken speelt (verschil
-//   maximaal 1 blok). Wie in eerdere wedstrijden al het meest speelde, zit als eerste.
-// - Wie doorspeelt houdt zijn plek; een invaller neemt de plek over van wie eruit gaat,
-//   bij voorkeur op de linie waar hij tot nu toe het minst stond.
-// De gekozen formatie per blok blijft behouden; alles is daarna handmatig aan te passen.
-function genereerOpstelling(wedstrijd) {
-  const periodes = aantalPeriodes(wedstrijd);
-  const gewicht = periodeDuur(wedstrijd) / KWART_DUUR;
+function combinaties(lijst, k) {
+  if (k === 0) return [[]];
+  if (lijst.length < k) return [];
+  const [eerste, ...rest] = lijst;
+  return [
+    ...combinaties(rest, k - 1).map(c => [eerste, ...c]),
+    ...combinaties(rest, k),
+  ];
+}
+
+function spelerNaam(id) {
+  const p = state.players.find(x => x.id === id);
+  return p ? p.naam : '?';
+}
+
+function lijnVan(kwart, id) {
+  return ALLE_LIJNEN.find(lijn => kwart.opstelling[lijn].includes(id)) || null;
+}
+
+function plaatsingsKost(wedstrijd, id, lijn) {
+  if (lijn === 'keeper') return 2;
+  if (isFlexibel(wedstrijd, id)) return KOST_FLEXIBEL;
+  const { primair, secundair } = positiesVan(wedstrijd, id);
+  if (lijn === primair) return 0;
+  if (lijn === secundair) return KOST_SECUNDAIR;
+  return KOST_BUITEN_POSITIE;
+}
+
+// Wijst spelers aan verschillende plekken toe met de laagste totale kosten.
+function minimaleToewijzing(spelers, slots, kost) {
+  let dp = new Map([[0, { kost: 0, pad: [] }]]);
+  spelers.forEach(sp => {
+    const volgende = new Map();
+    dp.forEach((toestand, mask) => {
+      for (let j = 0; j < slots.length; j++) {
+        if (mask & (1 << j)) continue;
+        const nieuwMask = mask | (1 << j);
+        const k = toestand.kost + kost(sp, slots[j]);
+        const bestaand = volgende.get(nieuwMask);
+        if (!bestaand || k < bestaand.kost) volgende.set(nieuwMask, { kost: k, pad: [...toestand.pad, j] });
+      }
+    });
+    dp = volgende;
+  });
+  let beste = null;
+  dp.forEach(t => { if (!beste || t.kost < beste.kost) beste = t; });
+  return beste;
+}
+
+function maakGenereerContext(wedstrijd) {
   const aanwezig = state.players.filter(p => wedstrijd.aanwezig[p.id]);
   const vast = aanwezig.find(p => p.keeper) || null;
   const andere = state.wedstrijden.filter(w => w.id !== wedstrijd.id);
-
-  const minutenEerder = {};
-  const lijnTelling = {};
+  const eerderFractie = {}; // aandeel van de eerdere wedstrijdtijd dat de speler speelde (0..1)
+  const lijnTelling = {};   // eerder gespeelde kwarten per linie
   aanwezig.forEach(p => {
-    minutenEerder[p.id] = andere.reduce((som, w) => som + minutenSpelerInWedstrijd(w, p.id), 0);
+    const minuten = andere.reduce((som, w) => som + minutenSpelerInWedstrijd(w, p.id), 0);
+    eerderFractie[p.id] = minuten / (WEDSTRIJD_DUUR * Math.max(1, andere.length));
     const t = { keeper: 0, verdediging: 0, midden: 0, aanval: 0 };
     andere.forEach(w => {
       const x = positieTellingSpelerInWedstrijd(w, p.id);
@@ -811,82 +941,213 @@ function genereerOpstelling(wedstrijd) {
     });
     lijnTelling[p.id] = t;
   });
-
   // Willekeurige volgorde bij gelijke stand, zodat opnieuw genereren een andere variant geeft.
-  const pool = schud(aanwezig.filter(p => p !== vast)).sort((a, b) => minutenEerder[b.id] - minutenEerder[a.id]);
-  const formaties = wedstrijd.kwarten.map(k => formatieVinden(k.formatie));
-  const plaatsenPer = formaties.map(f => f.verdediging + f.midden + f.aanval + (vast ? 0 : 1));
+  const pool = schud(aanwezig.filter(p => p !== vast));
+  return { aanwezig, vast, pool, eerderFractie, lijnTelling };
+}
 
+// Vult één kwart/blok in op basis van wat er in de eerdere kwarten/blokken staat:
+// - de vaste keeper blijft in de goal;
+// - wie het meest gespeeld heeft gaat naar de bank (eerlijke speeltijd gaat voor);
+// - posities: primair, dan secundair; buiten die posities alleen als het echt niet anders kan;
+// - bij 8 blokken blijven de posities staan op 7,5, 22,5, 37,5 en 52,5 minuten (alleen wissels
+//   van/naar de bank); positiewissels kunnen dan alleen op 15, 30 en 45 minuten.
+function planPeriode(wedstrijd, i, ctx) {
+  const { vast, pool } = ctx;
+  const kwart = wedstrijd.kwarten[i];
+  const gewicht = periodeDuur(wedstrijd) / KWART_DUUR;
+  const sleutel = s => `${s.lijn}:${s.index}`;
+  const slots = plekCoordinaten(formatieVinden(kwart.formatie)).filter(s => !vast || s.lijn !== 'keeper');
+  const slotPerSleutel = new Map(slots.map(s => [sleutel(s), s]));
   const n = pool.length;
-  let wijzer = 0;
-  const spelend = plaatsenPer.map(plaatsen => {
-    const b = Math.max(0, n - plaatsen);
-    const bank = new Set();
-    for (let k = 0; k < b; k++) bank.add((wijzer + k) % n);
-    wijzer = n ? (wijzer + b) % n : 0;
-    return pool.filter((_, i) => !bank.has(i));
-  });
 
-  let vorigeSlot = {};
-  const lijnPerPeriode = [];
-  wedstrijd.kwarten.forEach((kwart, p) => {
-    const slots = plekCoordinaten(formaties[p]).filter(s => !vast || s.lijn !== 'keeper');
-    const vrij = new Map(slots.map(s => [`${s.lijn}:${s.index}`, s]));
+  const gespeeld = {};
+  const lijnTelling = {};
+  pool.forEach(p => { gespeeld[p.id] = 0; lijnTelling[p.id] = { ...ctx.lijnTelling[p.id] }; });
+  for (let k = 0; k < i; k++) {
+    ALLE_LIJNEN.forEach(lijn => wedstrijd.kwarten[k].opstelling[lijn].forEach(id => {
+      if (id && lijnTelling[id]) lijnTelling[id][lijn] += gewicht;
+    }));
+    const ids = alleToegewezenIds(wedstrijd.kwarten[k]);
+    pool.forEach(p => { if (ids.has(p.id)) gespeeld[p.id]++; });
+  }
+
+  const vorigeSlot = {};
+  if (i > 0) {
+    ALLE_LIJNEN.forEach(lijn => wedstrijd.kwarten[i - 1].opstelling[lijn].forEach((id, index) => {
+      if (id && lijnTelling[id]) vorigeSlot[id] = `${lijn}:${index}`;
+    }));
+  }
+  const heeftVorige = Object.keys(vorigeSlot).length > 0;
+  const vergrendeld = heeftVorige && aantalPeriodes(wedstrijd) === 8 && i % 2 === 1;
+
+  const prioriteit = {};
+  pool.forEach(p => { prioriteit[p.id] = gespeeld[p.id] + 0.5 * ctx.eerderFractie[p.id]; });
+
+  const kost = (sp, slot) => {
+    let k = plaatsingsKost(wedstrijd, sp.id, slot.lijn);
+    const vorige = vorigeSlot[sp.id];
+    if (vorige && vorige.split(':')[0] !== slot.lijn) k += KOST_ANDERE_LINIE;
+    return k + 0.02 * lijnTelling[sp.id][slot.lijn] + Math.random() * 0.001;
+  };
+
+  const evalueer = speelt => {
     const toegewezen = {};
-    const geplaatst = new Set();
-
-    spelend[p].forEach(sp => {
-      const sleutel = vorigeSlot[sp.id];
-      if (sleutel && vrij.has(sleutel)) {
-        toegewezen[sleutel] = sp.id;
-        vrij.delete(sleutel);
-        geplaatst.add(sp.id);
+    const bezet = new Set();
+    const rest = [];
+    let totaal = 0;
+    speelt.forEach(sp => {
+      const vorige = vergrendeld ? vorigeSlot[sp.id] : null;
+      if (vorige && slotPerSleutel.has(vorige)) {
+        bezet.add(vorige);
+        toegewezen[vorige] = sp;
+        totaal += kost(sp, slotPerSleutel.get(vorige));
+      } else {
+        rest.push(sp);
       }
     });
-    spelend[p].filter(sp => !geplaatst.has(sp.id)).forEach(sp => {
-      let beste = null;
-      let score = Infinity;
-      vrij.forEach((s, sleutel) => {
-        if (lijnTelling[sp.id][s.lijn] < score) { beste = sleutel; score = lijnTelling[sp.id][s.lijn]; }
-      });
-      if (beste) { toegewezen[beste] = sp.id; vrij.delete(beste); }
-    });
+    const vrij = slots.filter(s => !bezet.has(sleutel(s)));
+    const res = minimaleToewijzing(rest, vrij, kost);
+    if (!res) return null;
+    rest.forEach((sp, k) => { toegewezen[sleutel(vrij[res.pad[k]])] = sp; });
+    return { kost: totaal + res.kost, toegewezen };
+  };
 
-    kwart.opstelling = legeOpstelling(kwart.formatie);
-    kwart.bankKleur = {};
-    if (vast) kwart.opstelling.keeper[0] = vast.id;
-    vorigeSlot = {};
-    lijnPerPeriode[p] = {};
-    Object.entries(toegewezen).forEach(([sleutel, id]) => {
-      const [lijn, index] = sleutel.split(':');
-      kwart.opstelling[lijn][Number(index)] = id;
-      vorigeSlot[id] = sleutel;
-      lijnPerPeriode[p][id] = lijn;
-      lijnTelling[id][lijn] += gewicht;
-    });
+  const b = Math.max(0, n - slots.length);
+  const kandidaten = [...pool].sort((a, c) => prioriteit[c.id] - prioriteit[a.id]).slice(0, Math.min(n, b + 4));
+  let beste = null;
+  combinaties(kandidaten, b).forEach(bank => {
+    const bankIds = new Set(bank.map(p => p.id));
+    const speelt = pool.filter(p => !bankIds.has(p.id));
+    const ev = evalueer(speelt);
+    if (!ev) return;
+    const score = ev.kost + EERLIJKHEID_GEWICHT * speelt.reduce((som, p) => som + prioriteit[p.id], 0);
+    if (!beste || score < beste.score) beste = { score, toegewezen: ev.toegewezen };
   });
 
-  // Bankspelers krijgen de kleur van de linie waar ze het volgende blok staan.
-  wedstrijd.kwarten.forEach((kwart, p) => {
-    if (p === periodes - 1) return;
-    pool.forEach(sp => {
-      if (spelend[p].includes(sp)) return;
-      const lijn = lijnPerPeriode[p + 1][sp.id];
-      if (lijn && lijn !== 'keeper') kwart.bankKleur[sp.id] = lijn;
-    });
+  kwart.opstelling = legeOpstelling(kwart.formatie);
+  kwart.bankKleur = {};
+  if (vast) kwart.opstelling.keeper[0] = vast.id;
+  Object.entries(beste.toegewezen).forEach(([sl, sp]) => {
+    const [lijn, index] = sl.split(':');
+    kwart.opstelling[lijn][Number(index)] = sp.id;
   });
+  return { vergrendeld };
+}
 
-  const gespeeld = pool.map(sp => spelend.filter(s => s.includes(sp)).length * periodeDuur(wedstrijd));
+// Bankspelers krijgen de kleur van de linie waar ze in het volgende kwart/blok staan.
+function werkBankKleurBij(wedstrijd, p) {
+  const kwart = wedstrijd.kwarten[p];
+  const volgende = wedstrijd.kwarten[p + 1];
+  if (!volgende) return;
+  const straks = alleToegewezenIds(volgende);
+  if (!straks.size) return;
+  const nu = alleToegewezenIds(kwart);
+  kwart.bankKleur = {};
+  state.players.forEach(pl => {
+    if (!wedstrijd.aanwezig[pl.id] || nu.has(pl.id) || !straks.has(pl.id)) return;
+    const lijn = LIJNEN.find(l => volgende.opstelling[l].includes(pl.id));
+    if (lijn) kwart.bankKleur[pl.id] = lijn;
+  });
+}
+
+function afwijkingenIn(wedstrijd, kwarten) {
+  const namen = new Set();
+  kwarten.forEach(kwart => LIJNEN.forEach(lijn => kwart.opstelling[lijn].forEach(id => {
+    if (id && !isGeschikt(wedstrijd, id, lijn)) namen.add(spelerNaam(id));
+  })));
+  return [...namen];
+}
+
+// Beoordeelt een complete wedstrijdindeling (lager = beter): eerst eerlijke speeltijd,
+// dan zo min mogelijk spelers buiten hun posities, dan zo min mogelijk secundaire plaatsingen.
+function scoreWedstrijd(wedstrijd, ctx) {
+  const n = ctx.pool.length;
+  if (!n) return 0;
+  const gespeeld = ctx.pool.map(sp => wedstrijd.kwarten.filter(k => alleToegewezenIds(k).has(sp.id)).length);
+  const totaal = gespeeld.reduce((som, g) => som + g, 0);
+  const ideaal = totaal % n === 0 ? 0 : 1;
+  const spreiding = Math.max(...gespeeld) - Math.min(...gespeeld);
+  let afwijkend = 0;
+  let secundair = 0;
+  wedstrijd.kwarten.forEach(kwart => LIJNEN.forEach(lijn => kwart.opstelling[lijn].forEach(id => {
+    if (!id) return;
+    if (!isGeschikt(wedstrijd, id, lijn)) afwijkend++;
+    else if (!isFlexibel(wedstrijd, id) && lijn === positiesVan(wedstrijd, id).secundair) secundair++;
+  })));
+  return 100 * Math.max(0, spreiding - ideaal) + 20 * afwijkend + secundair;
+}
+
+// De indeling gebeurt kwart voor kwart; omdat dat niet vooruitkijkt probeert deze functie
+// meerdere varianten en bewaart de beste.
+function genereerOpstelling(wedstrijd) {
+  const ctx = maakGenereerContext(wedstrijd);
+  let besteJson = null;
+  let besteScore = Infinity;
+  const start = performance.now();
+  for (let poging = 0; poging < 60 && (poging < 10 || performance.now() - start < 400); poging++) {
+    ctx.pool = schud(ctx.pool);
+    wedstrijd.kwarten.forEach((_, i) => planPeriode(wedstrijd, i, ctx));
+    const score = scoreWedstrijd(wedstrijd, ctx);
+    if (score < besteScore) {
+      besteScore = score;
+      besteJson = JSON.stringify(wedstrijd.kwarten);
+    }
+    if (score === 0) break;
+  }
+  wedstrijd.kwarten = JSON.parse(besteJson);
+  wedstrijd.kwarten.forEach((_, p) => werkBankKleurBij(wedstrijd, p));
+
+  const { pool, vast, aanwezig } = ctx;
   const delen = [];
   if (!pool.length) {
     delen.push('Geen veldspelers aanwezig.');
   } else {
+    const gespeeld = pool.map(sp => wedstrijd.kwarten.filter(k => alleToegewezenIds(k).has(sp.id)).length * periodeDuur(wedstrijd));
     const min = Math.min(...gespeeld);
     const max = Math.max(...gespeeld);
     delen.push(`Opstelling gegenereerd: elke veldspeler speelt ${min === max ? fmtGetal(min) : `${fmtGetal(min)}–${fmtGetal(max)}`} minuten.`);
   }
   if (vast) delen.push(`${vast.naam} staat steeds in de goal.`);
+  const afwijkers = afwijkingenIn(wedstrijd, wedstrijd.kwarten);
+  if (afwijkers.length) delen.push(`Let op: ${afwijkers.join(', ')} ${afwijkers.length === 1 ? 'staat' : 'staan'} soms buiten de primaire/secundaire positie (anders was eerlijke speeltijd niet haalbaar).`);
   if (aanwezig.length < 8) delen.push('Let op: minder dan 8 spelers, dus niet alle plekken zijn gevuld.');
+  return delen.join(' ');
+}
+
+function genereerPeriode(wedstrijd, i) {
+  const ctx = maakGenereerContext(wedstrijd);
+  const woord = periodeWoord(wedstrijd);
+  const woordHoofd = woord[0].toUpperCase() + woord.slice(1);
+  const meervoud = aantalPeriodes(wedstrijd) === 8 ? 'blokken' : 'kwarten';
+  const { vergrendeld } = planPeriode(wedstrijd, i, ctx);
+  if (i > 0) werkBankKleurBij(wedstrijd, i - 1);
+  werkBankKleurBij(wedstrijd, i);
+
+  const kwart = wedstrijd.kwarten[i];
+  const vorige = i > 0 ? wedstrijd.kwarten[i - 1] : null;
+  const nu = alleToegewezenIds(kwart);
+  const toen = vorige ? alleToegewezenIds(vorige) : new Set();
+  const heeftVorige = ctx.pool.some(p => toen.has(p.id));
+  const delen = [`${woordHoofd} ${i + 1} gegenereerd.`];
+
+  const bank = ctx.pool.filter(p => !nu.has(p.id)).map(p => p.naam);
+  if (bank.length) delen.push(`Bank: ${bank.join(', ')}.`);
+  if (heeftVorige) {
+    const erin = ctx.pool.filter(p => nu.has(p.id) && !toen.has(p.id))
+      .map(p => `${p.naam} (${LIJN_LABEL[lijnVan(kwart, p.id)]})`);
+    const eruit = ctx.pool.filter(p => toen.has(p.id) && !nu.has(p.id)).map(p => p.naam);
+    const andere = ctx.pool.filter(p => nu.has(p.id) && toen.has(p.id) && lijnVan(kwart, p.id) !== lijnVan(vorige, p.id))
+      .map(p => `${p.naam} (${LIJN_LABEL[lijnVan(vorige, p.id)]} → ${LIJN_LABEL[lijnVan(kwart, p.id)]})`);
+    if (eruit.length) delen.push(`Eruit: ${eruit.join(', ')}.`);
+    if (erin.length) delen.push(`Erin: ${erin.join(', ')}.`);
+    if (andere.length) delen.push(`Andere positie: ${andere.join(', ')}.`);
+    if (vergrendeld) delen.push('Posities blijven staan; positiewissels kunnen op 15, 30 en 45 minuten.');
+  }
+  const afwijkers = afwijkingenIn(wedstrijd, [kwart]);
+  if (afwijkers.length) delen.push(`Let op: ${afwijkers.join(', ')} ${afwijkers.length === 1 ? 'staat' : 'staan'} buiten de primaire/secundaire positie.`);
+  const eerdereLeeg = wedstrijd.kwarten.slice(0, i).some(k => !alleToegewezenIds(k).size);
+  if (eerdereLeeg) delen.push(`Let op: eerdere ${meervoud} zijn leeg, dus de speeltijd tot nu toe is niet meegerekend.`);
   return delen.join(' ');
 }
 
@@ -907,9 +1168,137 @@ document.getElementById('btnGenereer').addEventListener('click', () => {
   renderAlles();
 });
 
+document.getElementById('btnGenereerPeriode').addEventListener('click', () => {
+  const wedstrijd = huidigeWedstrijd();
+  if (!state.players.some(p => wedstrijd.aanwezig[p.id])) {
+    genereerMelding = { wedstrijdId: wedstrijd.id, tekst: 'Vink eerst de aanwezige spelers aan.' };
+    renderGenereerMelding();
+    return;
+  }
+  const kwart = wedstrijd.kwarten[huidigKwartIndex];
+  const heeftOpstelling = LIJNEN.some(lijn => kwart.opstelling[lijn].some(Boolean));
+  if (heeftOpstelling && !confirm(`Dit ${periodeWoord(wedstrijd)} opnieuw genereren? De huidige invulling wordt overschreven.`)) return;
+  const tekst = genereerPeriode(wedstrijd, huidigKwartIndex);
+  opslaan();
+  genereerMelding = { wedstrijdId: wedstrijd.id, tekst };
+  renderAlles();
+});
+
 function renderGenereerMelding() {
   const el = document.getElementById('genereerMelding');
   el.textContent = genereerMelding && genereerMelding.wedstrijdId === huidigeWedstrijd().id ? genereerMelding.tekst : '';
+}
+
+// ---------- Haalbaarheidscontrole ----------
+
+// Controleert vooraf of eerlijke speeltijd haalbaar is met de ingestelde posities (formatie van
+// kwart/blok 1). Een lijn (of combinatie van lijnen) heeft te weinig geschikte spelers, of juist
+// te veel spelers die alleen daar kunnen spelen.
+function analyseHaalbaarheid(wedstrijd) {
+  const aanwezig = state.players.filter(p => wedstrijd.aanwezig[p.id]);
+  const vast = aanwezig.find(p => p.keeper) || null;
+  const pool = aanwezig.filter(p => p !== vast);
+  const f = formatieVinden(wedstrijd.kwarten[0].formatie);
+  const periodes = aantalPeriodes(wedstrijd);
+  const meervoud = periodes === 8 ? 'blokken' : 'kwarten';
+  const plekken = { verdediging: f.verdediging, midden: f.midden, aanval: f.aanval, keeper: 1 };
+  const lijnen = LIJNEN.concat(vast ? [] : ['keeper']);
+  const totaal = lijnen.reduce((som, l) => som + plekken[l], 0);
+  const n = pool.length;
+
+  const regels = LIJNEN.map(lijn => ({
+    lijn,
+    plekken: plekken[lijn],
+    primair: pool.filter(p => positiesVan(wedstrijd, p.id).primair === lijn).length,
+    secundair: pool.filter(p => positiesVan(wedstrijd, p.id).secundair === lijn).length,
+    flexibel: pool.filter(p => isFlexibel(wedstrijd, p.id)).length,
+    geschikt: pool.filter(p => isGeschikt(wedstrijd, p.id, lijn)).length,
+  }));
+  if (!n) return { regels, problemen: [], doel: '', formatie: f.label, leeg: true };
+
+  const capHoog = Math.min(periodes, Math.ceil((totaal * periodes) / n));
+  const capLaag = n >= totaal ? Math.floor((totaal * periodes) / n) : periodes;
+  const label = T => T.map(l => LIJN_LABEL[l]).join(' + ');
+
+  const problemen = [];
+  const gemeldBoven = [];
+  const gemeldOnder = [];
+  const deelverzamelingen = [];
+  for (let mask = 1; mask < (1 << lijnen.length); mask++) {
+    deelverzamelingen.push(lijnen.filter((_, k) => mask & (1 << k)));
+  }
+  deelverzamelingen.sort((a, b) => a.length - b.length);
+
+  deelverzamelingen.forEach(T => {
+    const plekkenT = T.reduce((som, l) => som + plekken[l], 0);
+    const vraag = plekkenT * periodes;
+    const geschikt = pool.filter(p => T.some(l => isGeschikt(wedstrijd, p.id, l))).length;
+    if (!gemeldBoven.some(g => g.every(l => T.includes(l))) && geschikt * capHoog < vraag) {
+      gemeldBoven.push(T);
+      problemen.push(`Te weinig geschikte spelers voor ${label(T)}: ${geschikt} geschikt voor ${plekkenT} plek${plekkenT === 1 ? '' : 'ken'} per ${periodeWoord(wedstrijd)}, dus ${n > totaal ? 'zij spelen vaker dan de rest, of er moet' : 'er moet'} iemand buiten zijn posities staan.`);
+    }
+    const alleen = pool.filter(p => lijnen.every(l => !T.includes(l) ? !isGeschikt(wedstrijd, p.id, l) : true)).length;
+    if (!gemeldOnder.some(g => g.every(l => T.includes(l))) && T.length < lijnen.length && alleen * capLaag > vraag) {
+      gemeldOnder.push(T);
+      problemen.push(`Te veel spelers die alleen ${label(T)} kunnen spelen: ${alleen} spelers voor ${plekkenT} plek${plekkenT === 1 ? '' : 'ken'} per ${periodeWoord(wedstrijd)}. Zij zitten vaker op de bank dan de rest, of er moet iemand buiten zijn posities staan.`);
+    }
+  });
+
+  const laag = n > totaal ? Math.floor((totaal * periodes) / n) : periodes;
+  const hoog = n > totaal ? Math.ceil((totaal * periodes) / n) : periodes;
+  const duur = periodeDuur(wedstrijd);
+  const doel = laag === hoog
+    ? `Eerlijke verdeling: elke veldspeler speelt ${laag} van de ${periodes} ${meervoud} (${fmtGetal(laag * duur)} minuten).`
+    : `Eerlijke verdeling: elke veldspeler speelt ${laag} of ${hoog} van de ${periodes} ${meervoud} (${fmtGetal(laag * duur)}–${fmtGetal(hoog * duur)} minuten).`;
+  return { regels, problemen, doel, formatie: f.label, leeg: false };
+}
+
+function renderHaalbaarheid() {
+  const el = document.getElementById('haalbaarheid');
+  el.innerHTML = '';
+  const wedstrijd = huidigeWedstrijd();
+  const a = analyseHaalbaarheid(wedstrijd);
+  if (a.leeg) {
+    el.innerHTML = '<p class="hint">Vink aanwezige veldspelers aan om de haalbaarheid te zien.</p>';
+    return;
+  }
+
+  const lijst = document.createElement('ul');
+  lijst.className = 'haalbaarheid-regels';
+  a.regels.forEach(r => {
+    const li = document.createElement('li');
+    const tekort = r.geschikt < r.plekken;
+    li.className = tekort ? 'tekort' : '';
+    li.textContent = `${LIJN_LABEL[r.lijn]}: ${r.plekken} plekken · ${r.geschikt} geschikt (★ ${r.primair}, ☆ ${r.secundair}, flexibel ${r.flexibel})`;
+    lijst.appendChild(li);
+  });
+  el.appendChild(lijst);
+
+  const status = document.createElement('p');
+  status.className = 'haalbaarheid-status ' + (a.problemen.length ? 'let-op' : 'ok');
+  status.textContent = a.problemen.length
+    ? '⚠️ Eerlijke speeltijd met deze posities is niet helemaal haalbaar:'
+    : `✅ Eerlijke speeltijd lijkt haalbaar met deze posities. ${a.doel}`;
+  el.appendChild(status);
+
+  if (a.problemen.length) {
+    const ul = document.createElement('ul');
+    ul.className = 'haalbaarheid-problemen';
+    a.problemen.forEach(t => {
+      const li = document.createElement('li');
+      li.textContent = t;
+      ul.appendChild(li);
+    });
+    el.appendChild(ul);
+    const uitleg = document.createElement('p');
+    uitleg.className = 'hint';
+    uitleg.textContent = `${a.doel} De generator geeft voorrang aan eerlijke speeltijd en zet iemand alleen buiten zijn posities als het niet anders kan.`;
+    el.appendChild(uitleg);
+  }
+  const noot = document.createElement('p');
+  noot.className = 'hint';
+  noot.textContent = `Berekend met formatie ${a.formatie} (eerste ${periodeWoord(wedstrijd)}); spelers zonder posities tellen overal mee.`;
+  el.appendChild(noot);
 }
 
 // ---------- Overig ----------
@@ -948,6 +1337,7 @@ function renderAlles() {
   document.getElementById('teamNaam').textContent = state.teamNaam;
   renderWedstrijdKiezer();
   renderSpelers();
+  renderHaalbaarheid();
   renderKwartTabs();
   renderGenereerMelding();
   renderFormatieSelect();
