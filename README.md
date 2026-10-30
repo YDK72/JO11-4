@@ -38,6 +38,12 @@ staat, per kwart.
 - **Genereer dit kwart**: vult alleen het geselecteerde kwart/blok in, op basis
   van wat er in de eerdere kwarten/blokken staat — bedoeld voor elk rustmoment.
   De melding toont wie eruit en erin gaat en wie van positie wisselt.
+- **Iedereen minstens één keer secundair**: de generator laat elke speler met een
+  primaire én secundaire positie minstens 15 minuten op die secundaire positie
+  spelen (bij 8 blokken twee blokken), verspreid over de wedstrijd. Eerlijke
+  speeltijd blijft voorgaan; lukt het voor iemand niet, dan staat dat in de
+  melding. Bij "Genereer hele wedstrijd" lukt dit met een sluitende lijst vrijwel
+  altijd; per kwart genereren kijkt niet vooruit en kan er daardoor een missen.
 - Van positie wisselen gebeurt bij de generator alleen op 15, 30 en 45 minuten
   (de rustmomenten). Bij 8 blokken blijven de posities daartussen staan en
   neemt een invaller de plek over van wie eruit gaat.

@@ -866,6 +866,9 @@ const KOST_BUITEN_POSITIE = 20; // zwaarder dan 1 kwart verschil (15), lichter d
 const KOST_SECUNDAIR = 1;
 const KOST_FLEXIBEL = 0.5;
 const KOST_ANDERE_LINIE = 0.2; // kleine voorkeur om op dezelfde linie te blijven
+const SEC_BONUS = 4;           // voordeel voor een nog benodigde secundaire periode (netto -3 t.o.v. primair)
+const AFMAKEN_BONUS = 10;      // doorspelen om een begonnen secundaire periode vol te maken (lager dan 1 kwart verschil = 15)
+const KOST_SECUNDAIR_TUSSENDOOR = 3; // een secundaire plek beginnen buiten de rustmomenten (8 blokken)
 
 function schud(lijst) {
   const kopie = [...lijst];
@@ -905,17 +908,27 @@ function plaatsingsKost(wedstrijd, id, lijn) {
 }
 
 // Wijst spelers aan verschillende plekken toe met de laagste totale kosten.
-function minimaleToewijzing(spelers, slots, kost) {
-  let dp = new Map([[0, { kost: 0, pad: [] }]]);
+// Optioneel: `bonus(speler, plek)` geeft aan dat die plaatsing een nog benodigde secundaire
+// periode oplevert; daarvan krijgen er maximaal `cap` per keer de bonus SEC_BONUS.
+function minimaleToewijzing(spelers, slots, kost, bonus = null, cap = 0) {
+  let dp = new Map([['0:0', { kost: 0, pad: [] }]]);
   spelers.forEach(sp => {
     const volgende = new Map();
-    dp.forEach((toestand, mask) => {
+    const zet = (mask, teller, k, pad) => {
+      const sleutel = `${mask}:${teller}`;
+      const bestaand = volgende.get(sleutel);
+      if (!bestaand || k < bestaand.kost) volgende.set(sleutel, { kost: k, pad });
+    };
+    dp.forEach((toestand, sleutel) => {
+      const [maskTekst, tellerTekst] = sleutel.split(':');
+      const mask = Number(maskTekst);
+      const teller = Number(tellerTekst);
       for (let j = 0; j < slots.length; j++) {
         if (mask & (1 << j)) continue;
-        const nieuwMask = mask | (1 << j);
-        const k = toestand.kost + kost(sp, slots[j]);
-        const bestaand = volgende.get(nieuwMask);
-        if (!bestaand || k < bestaand.kost) volgende.set(nieuwMask, { kost: k, pad: [...toestand.pad, j] });
+        const basis = toestand.kost + kost(sp, slots[j]);
+        const pad = [...toestand.pad, j];
+        zet(mask | (1 << j), teller, basis, pad);
+        if (bonus && teller < cap && bonus(sp, slots[j])) zet(mask | (1 << j), teller + 1, basis - SEC_BONUS, pad);
       }
     });
     dp = volgende;
@@ -923,6 +936,23 @@ function minimaleToewijzing(spelers, slots, kost) {
   let beste = null;
   dp.forEach(t => { if (!beste || t.kost < beste.kost) beste = t; });
   return beste;
+}
+
+// Minuten die een speler (in deze wedstrijd, tot kwart/blok `tot`) op zijn secundaire positie speelde.
+function secundaireMinuten(wedstrijd, id, tot = wedstrijd.kwarten.length) {
+  const { primair, secundair } = positiesVan(wedstrijd, id);
+  if (!primair || !secundair) return 0;
+  let minuten = 0;
+  for (let k = 0; k < tot; k++) {
+    if (lijnVan(wedstrijd.kwarten[k], id) === secundair) minuten += periodeDuur(wedstrijd);
+  }
+  return minuten;
+}
+
+// Spelers met een primaire én secundaire positie doen mee aan "minstens één keer secundair".
+function heeftSecundaireBehoefte(wedstrijd, id, tot = wedstrijd.kwarten.length) {
+  const { primair, secundair } = positiesVan(wedstrijd, id);
+  return !!primair && !!secundair && secundaireMinuten(wedstrijd, id, tot) < KWART_DUUR;
 }
 
 function maakGenereerContext(wedstrijd) {
@@ -984,8 +1014,25 @@ function planPeriode(wedstrijd, i, ctx) {
   const prioriteit = {};
   pool.forEach(p => { prioriteit[p.id] = gespeeld[p.id] + 0.5 * ctx.eerderFractie[p.id]; });
 
+  // Wie moet nog minstens 15 minuten secundair spelen? Per rustmoment wordt hooguit een
+  // evenredig deel daarvan ingepland, zodat het over de wedstrijd verspreid wordt.
+  const aantalP = aantalPeriodes(wedstrijd);
+  let momenten = 0;
+  for (let k = i; k < aantalP; k++) if (aantalP !== 8 || k % 2 === 0) momenten++;
+  const behoeftIds = new Set(pool.filter(p => heeftSecundaireBehoefte(wedstrijd, p.id, i)).map(p => p.id));
+  const cap = vergrendeld ? 0 : Math.ceil(behoeftIds.size / Math.max(1, momenten));
+  const bonus = (sp, slot) => behoeftIds.has(sp.id) && slot.lijn === positiesVan(wedstrijd, sp.id).secundair;
+  // Wie in het vorige blok net op zijn secundaire positie begon (bij 8 blokken: 7,5 minuten) en
+  // nog geen 15 minuten heeft, speelt liefst door om die periode vol te maken.
+  const afmaken = new Set(pool.filter(p => {
+    const x = positiesVan(wedstrijd, p.id);
+    return i > 0 && behoeftIds.has(p.id) && x.primair && lijnVan(wedstrijd.kwarten[i - 1], p.id) === x.secundair;
+  }).map(p => p.id));
+
   const kost = (sp, slot) => {
     let k = plaatsingsKost(wedstrijd, sp.id, slot.lijn);
+    const x = positiesVan(wedstrijd, sp.id);
+    if (vergrendeld && x.primair && slot.lijn === x.secundair) k += KOST_SECUNDAIR_TUSSENDOOR;
     const vorige = vorigeSlot[sp.id];
     if (vorige && vorige.split(':')[0] !== slot.lijn) k += KOST_ANDERE_LINIE;
     return k + 0.02 * lijnTelling[sp.id][slot.lijn] + Math.random() * 0.001;
@@ -1007,7 +1054,7 @@ function planPeriode(wedstrijd, i, ctx) {
       }
     });
     const vrij = slots.filter(s => !bezet.has(sleutel(s)));
-    const res = minimaleToewijzing(rest, vrij, kost);
+    const res = minimaleToewijzing(rest, vrij, kost, vergrendeld ? null : bonus, cap);
     if (!res) return null;
     rest.forEach((sp, k) => { toegewezen[sleutel(vrij[res.pad[k]])] = sp; });
     return { kost: totaal + res.kost, toegewezen };
@@ -1021,7 +1068,8 @@ function planPeriode(wedstrijd, i, ctx) {
     const speelt = pool.filter(p => !bankIds.has(p.id));
     const ev = evalueer(speelt);
     if (!ev) return;
-    const score = ev.kost + EERLIJKHEID_GEWICHT * speelt.reduce((som, p) => som + prioriteit[p.id], 0);
+    const score = ev.kost + EERLIJKHEID_GEWICHT * speelt.reduce((som, p) => som + prioriteit[p.id], 0)
+      - AFMAKEN_BONUS * speelt.filter(p => afmaken.has(p.id)).length;
     if (!beste || score < beste.score) beste = { score, toegewezen: ev.toegewezen };
   });
 
@@ -1051,6 +1099,15 @@ function werkBankKleurBij(wedstrijd, p) {
   });
 }
 
+// "Secundair: 9 van 11 spelers ..." na het genereren van de hele wedstrijd.
+function secundairSamenvatting(wedstrijd, pool) {
+  const doen = pool.filter(sp => positiesVan(wedstrijd, sp.id).primair && positiesVan(wedstrijd, sp.id).secundair);
+  if (!doen.length) return '';
+  const ontbreekt = doen.filter(sp => secundaireMinuten(wedstrijd, sp.id) < KWART_DUUR);
+  if (!ontbreekt.length) return `Alle ${doen.length} spelers met een secundaire positie spelen die minstens één keer (15 min).`;
+  return `${doen.length - ontbreekt.length} van ${doen.length} spelers spelen minstens één keer (15 min) secundair; nog niet: ${ontbreekt.map(sp => sp.naam).join(', ')}.`;
+}
+
 function afwijkingenIn(wedstrijd, kwarten) {
   const namen = new Set();
   kwarten.forEach(kwart => LIJNEN.forEach(lijn => kwart.opstelling[lijn].forEach(id => {
@@ -1069,13 +1126,20 @@ function scoreWedstrijd(wedstrijd, ctx) {
   const ideaal = totaal % n === 0 ? 0 : 1;
   const spreiding = Math.max(...gespeeld) - Math.min(...gespeeld);
   let afwijkend = 0;
-  let secundair = 0;
   wedstrijd.kwarten.forEach(kwart => LIJNEN.forEach(lijn => kwart.opstelling[lijn].forEach(id => {
-    if (!id) return;
-    if (!isGeschikt(wedstrijd, id, lijn)) afwijkend++;
-    else if (!isFlexibel(wedstrijd, id) && lijn === positiesVan(wedstrijd, id).secundair) secundair++;
+    if (id && !isGeschikt(wedstrijd, id, lijn)) afwijkend++;
   })));
-  return 100 * Math.max(0, spreiding - ideaal) + 20 * afwijkend + secundair;
+  // Iedereen met primair én secundair moet minstens 15 minuten secundair spelen; meer dan dat is minder gewenst.
+  let ontbreekt = 0;
+  let teveel = 0;
+  ctx.pool.forEach(sp => {
+    const { primair, secundair } = positiesVan(wedstrijd, sp.id);
+    if (!primair || !secundair) return;
+    const kwartjes = secundaireMinuten(wedstrijd, sp.id) / KWART_DUUR;
+    if (kwartjes < 1) ontbreekt++;
+    else teveel += kwartjes - 1;
+  });
+  return 100 * Math.max(0, spreiding - ideaal) + 20 * afwijkend + 25 * ontbreekt + teveel;
 }
 
 // De indeling gebeurt kwart voor kwart; omdat dat niet vooruitkijkt probeert deze functie
@@ -1111,6 +1175,8 @@ function genereerOpstelling(wedstrijd) {
   if (vast) delen.push(`${vast.naam} staat steeds in de goal.`);
   const afwijkers = afwijkingenIn(wedstrijd, wedstrijd.kwarten);
   if (afwijkers.length) delen.push(`Let op: ${afwijkers.join(', ')} ${afwijkers.length === 1 ? 'staat' : 'staan'} soms buiten de primaire/secundaire positie (anders was eerlijke speeltijd niet haalbaar).`);
+  const secMelding = secundairSamenvatting(wedstrijd, pool);
+  if (secMelding) delen.push(secMelding);
   if (aanwezig.length < 8) delen.push('Let op: minder dan 8 spelers, dus niet alle plekken zijn gevuld.');
   return delen.join(' ');
 }
@@ -1144,6 +1210,12 @@ function genereerPeriode(wedstrijd, i) {
     if (andere.length) delen.push(`Andere positie: ${andere.join(', ')}.`);
     if (vergrendeld) delen.push('Posities blijven staan; positiewissels kunnen op 15, 30 en 45 minuten.');
   }
+  const opSecundair = ctx.pool
+    .filter(p => nu.has(p.id) && positiesVan(wedstrijd, p.id).primair && lijnVan(kwart, p.id) === positiesVan(wedstrijd, p.id).secundair)
+    .map(p => `${p.naam} (${LIJN_LABEL[lijnVan(kwart, p.id)]})`);
+  if (opSecundair.length) delen.push(`Op secundaire positie: ${opSecundair.join(', ')}.`);
+  const nogNiet = ctx.pool.filter(p => heeftSecundaireBehoefte(wedstrijd, p.id, i + 1)).map(p => p.naam);
+  if (nogNiet.length) delen.push(`Nog niet secundair gespeeld: ${nogNiet.join(', ')}.`);
   const afwijkers = afwijkingenIn(wedstrijd, [kwart]);
   if (afwijkers.length) delen.push(`Let op: ${afwijkers.join(', ')} ${afwijkers.length === 1 ? 'staat' : 'staan'} buiten de primaire/secundaire positie.`);
   const eerdereLeeg = wedstrijd.kwarten.slice(0, i).some(k => !alleToegewezenIds(k).size);
